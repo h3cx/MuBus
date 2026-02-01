@@ -1,3 +1,4 @@
+#include "Arduino.h"
 #include "HardwareSerial.h"
 namespace MuBus {
 
@@ -25,16 +26,16 @@ public:
 
 class MuBusNode {
 private:
-  arduino::HardwareSerial *port_ = nullptr;
+  HardwareSerial *port_ = nullptr;
   MuPacketHeader *out_packet_;
   MuPacketHeader *in_packet_ = new MuPacketHeader();
   uint8_t *in_buf_ = (uint8_t *)malloc(506);
 
 public:
   MuBusNode();
-  MuBusNode(arduino::HardwareSerial *port);
+  MuBusNode(HardwareSerial *port);
   MuBusNode(uint8_t addr);
-  MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
+  MuBusNode(HardwareSerial *port, uint8_t addr);
   void bindAddr(uint8_t addr);
   bool broadcast(uint8_t *buf, uint16_t len);
   bool parse();
