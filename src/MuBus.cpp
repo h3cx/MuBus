@@ -26,10 +26,10 @@ uint8_t *MuPacketHeader::serialize() {
 };
 
 MuBusNode::MuBusNode() : out_packet_(new MuPacketHeader()) {}
-MuBusNode::MuBusNode(arduino::HardwareSerial *port)
+MuBusNode::MuBusNode(HardwareSerial *port)
     : port_(port), out_packet_(new MuPacketHeader) {}
 MuBusNode::MuBusNode(uint8_t addr) : out_packet_(new MuPacketHeader(addr)) {}
-MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr)
+MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr)
     : port_(port), out_packet_(new MuPacketHeader(addr)) {}
 
 bool MuBusNode::broadcast(uint8_t *buf, uint16_t len) {
