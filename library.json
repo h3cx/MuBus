@@ -1,0 +1,5 @@
+{
+  "name": "MuBus",
+  "version": "0.0.1",
+  "description": "A lightweight, fast serial bus communication protocol"
+}
