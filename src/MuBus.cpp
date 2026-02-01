@@ -1,4 +1,4 @@
-#include "../includes/MuBus.h"
+#include "MuBus.h"
 #include "api/Common.h"
 
 namespace MuBus {
