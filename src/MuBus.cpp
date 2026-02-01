@@ -40,6 +40,7 @@ bool MuBusNode::broadcast(uint8_t *buf, uint16_t len) {
     return false;
   }
   out_packet_->bindDest(0x00);
+  out_packet_->setSize(len);
   port_->write(out_packet_->serialize(), 6);
   if (len > 0) {
     port_->write(buf, len);
@@ -53,18 +54,30 @@ bool MuBusNode::parse() {
       return false;
     }
     while (!port_->available()) {
+#ifdef MUBUS_MBED
+      rtos::ThisThread::sleep_for(2);
+#else
       delay(2);
+#endif // MUBUS_MBED
     }
     uint8_t second_byte = port_->read();
     if (second_byte != 0x91) {
       return false;
     }
     while (!port_->available()) {
+#ifdef MUBUS_MBED
+      rtos::ThisThread::sleep_for(2);
+#else
       delay(2);
+#endif // MUBUS_MBED
     }
     in_packet_->bindSource(port_->read());
     while (!port_->available()) {
+#ifdef MUBUS_MBED
+      rtos::ThisThread::sleep_for(2);
+#else
       delay(2);
+#endif // MUBUS_MBED
     }
     in_packet_->bindDest(port_->read());
     if (in_packet_->getDest() != out_packet_->getSource() &&
@@ -72,7 +85,11 @@ bool MuBusNode::parse() {
       return false;
     }
     while (port_->available() < 2) {
+#ifdef MUBUS_MBED
+      rtos::ThisThread::sleep_for(2);
+#else
       delay(2);
+#endif // MUBUS_MBED
     }
     uint8_t b0 = port_->read();
     uint8_t b1 = port_->read();
@@ -89,8 +106,11 @@ bool MuBusNode::parse() {
         delay(2);
       }
     }
+    return true;
   }
-  return true;
+  return false;
 }
 void MuBusNode::bindAddr(uint8_t addr) { out_packet_->bindSource(addr); }
+uint8_t *MuBusNode::getPayload() { return in_buf_; }
+uint16_t MuBusNode::getPayloadSize() { return in_packet_->getSize(); }
 } // namespace MuBus

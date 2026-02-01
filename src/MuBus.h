@@ -1,5 +1,8 @@
 #include "Arduino.h"
 #include "HardwareSerial.h"
+#ifdef MUBUS_MBED
+#include "mbed.h"
+#endif // MUBUS_MBED
 namespace MuBus {
 
 class MuPacketHeader {
@@ -39,6 +42,8 @@ public:
   void bindAddr(uint8_t addr);
   bool broadcast(uint8_t *buf, uint16_t len);
   bool parse();
+  uint8_t *getPayload();
+  uint16_t getPayloadSize();
 };
 
 } // namespace MuBus
