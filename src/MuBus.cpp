@@ -1,5 +1,4 @@
 #include "MuBus.h"
-#include "api/Common.h"
 
 namespace MuBus {
 MuPacketHeader::MuPacketHeader(uint8_t source_addr)
