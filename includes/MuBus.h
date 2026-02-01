@@ -1,12 +1,5 @@
 #include "HardwareSerial.h"
-#include <array>
-#include <cstdint>
-#include <cstdlib>
 namespace MuBus {
-typedef struct MuDF {
-  uint16_t size_;
-  uint8_t *data_;
-} MuDF_;
 
 class MuPacketHeader {
 private:
@@ -42,6 +35,7 @@ public:
   MuBusNode(arduino::HardwareSerial *port);
   MuBusNode(uint8_t addr);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
+  void bindAddr(uint8_t addr);
   bool broadcast(uint8_t *buf, uint16_t len);
   bool parse();
 };

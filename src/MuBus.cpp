@@ -1,8 +1,5 @@
 #include "../includes/MuBus.h"
 #include "api/Common.h"
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
 
 namespace MuBus {
 MuPacketHeader::MuPacketHeader(uint8_t source_addr)
@@ -71,7 +68,8 @@ bool MuBusNode::parse() {
       delay(2);
     }
     in_packet_->bindDest(port_->read());
-    if (in_packet_->getDest() != out_packet_->getSource()) {
+    if (in_packet_->getDest() != out_packet_->getSource() &&
+        in_packet_->getDest() != 0x00) {
       return false;
     }
     while (port_->available() < 2) {
@@ -95,4 +93,5 @@ bool MuBusNode::parse() {
   }
   return true;
 }
+void MuBusNode::bindAddr(uint8_t addr) { out_packet_->bindSource(addr); }
 } // namespace MuBus
