@@ -1,3 +1,4 @@
+#define MUBUS_MBED
 #include "Arduino.h"
 #include "HardwareSerial.h"
 #ifdef MUBUS_MBED
@@ -29,21 +30,32 @@ public:
 
 class MuBusNode {
 private:
+  #ifdef MUBUS_MBED
+  mbed::BufferedSerial *port_ = nullptr;
+  #else
   HardwareSerial *port_ = nullptr;
+  #endif
   MuPacketHeader *out_packet_;
   MuPacketHeader *in_packet_ = new MuPacketHeader();
   uint8_t *in_buf_ = (uint8_t *)malloc(506);
 
 public:
   MuBusNode();
-  MuBusNode(HardwareSerial *port);
   MuBusNode(uint8_t addr);
+  #ifdef MUBUS_MBED
+  MuBusNode(mbed::BufferedSerial *port);
+  MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
+  #else
+  MuBusNode(HardwareSerial *port);
   MuBusNode(HardwareSerial *port, uint8_t addr);
+  #endif
   void bindAddr(uint8_t addr);
   bool broadcast(uint8_t *buf, uint16_t len);
+  bool send(uint8_t *buf, uint16_t len, uint8_t recv_addr);
   bool parse();
   uint8_t *getPayload();
   uint16_t getPayloadSize();
+  String formatHeader();
 };
 
 } // namespace MuBus
