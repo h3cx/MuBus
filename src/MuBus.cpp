@@ -1,5 +1,7 @@
 #include "MuBus.h"
 
+#include <stdio.h>
+
 namespace MuBus {
 
 void encodeHeaderBytewise(uint8_t *out, uint8_t src, uint8_t dst, uint16_t len) {
@@ -42,45 +44,50 @@ uint8_t *MuPacketHeader::serialize() {
 
 MuBusNode::MuBusNode() : out_packet_(new MuPacketHeader()) {}
 MuBusNode::MuBusNode(uint8_t addr) : out_packet_(new MuPacketHeader(addr)) {}
-#ifdef MUBUS_MBED
-MuBusNode::MuBusNode(mbed::BufferedSerial *port)
-    : port_(port), out_packet_(new MuPacketHeader) {}
-MuBusNode::MuBusNode(mbed::BufferedSerial *port, uint8_t addr)
-    : port_(port), out_packet_(new MuPacketHeader(addr)) {}
-#else
-MuBusNode::MuBusNode(HardwareSerial *port)
-    : port_(port), out_packet_(new MuPacketHeader) {}
-MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr)
-    : port_(port), out_packet_(new MuPacketHeader(addr)) {}
-#endif
+MuBusNode::MuBusNode(MuTransport *transport)
+    : transport_(transport), out_packet_(new MuPacketHeader) {}
+MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr)
+    : transport_(transport), out_packet_(new MuPacketHeader(addr)) {}
 
-#ifdef MUBUS_MBED
-bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
-  port_ = port;
+MuBusNode::~MuBusNode() {
+  if (owns_transport_) {
+    delete transport_;
+  }
+  free(in_buf_);
+  delete in_packet_;
+  delete out_packet_;
+}
+
+bool MuBusNode::assignTransport(MuTransport *transport, bool take_ownership,
+                                uint8_t addr) {
+  if (owns_transport_) {
+    delete transport_;
+  }
+  transport_ = transport;
+  owns_transport_ = take_ownership;
   bindAddr(addr);
   resetParser();
   has_pending_frame_ = false;
-  return port_ != nullptr;
+  return transport_ != nullptr;
 }
-#else
-bool MuBusNode::begin(HardwareSerial *port, uint8_t addr) {
-  port_ = port;
-  bindAddr(addr);
-  resetParser();
-  has_pending_frame_ = false;
-  return port_ != nullptr;
+
+bool MuBusNode::begin(MuTransport *transport, uint8_t addr) {
+  return assignTransport(transport, false, addr);
 }
-#endif
 
 void MuBusNode::stop() {
-  port_ = nullptr;
+  if (owns_transport_) {
+    delete transport_;
+  }
+  transport_ = nullptr;
+  owns_transport_ = false;
   resetParser();
   has_pending_frame_ = false;
   frame_callback_ = nullptr;
 }
 
 bool MuBusNode::send(uint8_t dst, const uint8_t *data, uint16_t len) {
-  if (port_ == nullptr) {
+  if (transport_ == nullptr) {
     return false;
   }
   if (len > kMaxPayload) {
@@ -91,9 +98,11 @@ bool MuBusNode::send(uint8_t dst, const uint8_t *data, uint16_t len) {
   }
   out_packet_->bindDest(dst);
   out_packet_->setSize(len);
-  port_->write(out_packet_->serialize(), kHeaderSize);
+  if (!transport_->write(out_packet_->serialize(), kHeaderSize)) {
+    return false;
+  }
   if (len > 0) {
-    port_->write(data, len);
+    return transport_->write(data, len);
   }
   return true;
 }
@@ -159,71 +168,13 @@ bool MuBusNode::parse() {
   return true;
 }
 
-void MuBusNode::resetParser() {
-  parser_ = ParserContext{};
-}
+void MuBusNode::resetParser() { parser_ = ParserContext{}; }
 
-#ifdef MUBUS_MBED
-bool MuBusNode::readTransportBytes(uint8_t *buffer, size_t len,
-                                  uint32_t timeout_ms,
-                                  size_t &bytes_read) {
-  bytes_read = 0;
-  if (buffer == nullptr || len == 0 || port_ == nullptr) {
-    return false;
-  }
-
-  const uint32_t start_ms = millis();
-  while (bytes_read < len) {
-    if (port_->readable()) {
-      const ssize_t result = port_->read(buffer + bytes_read, len - bytes_read);
-      if (result > 0) {
-        bytes_read += static_cast<size_t>(result);
-        continue;
-      }
-      if (result < 0) {
-        return false;
-      }
-    }
-
-    if (timeout_ms == 0) {
-      break;
-    }
-
-    if (static_cast<uint32_t>(millis() - start_ms) >= timeout_ms) {
-      break;
-    }
-
-    delay(1);
-  }
-
-  return bytes_read > 0;
-}
-
-#endif
 bool MuBusNode::readTransportByte(uint8_t &byte) {
-  if (port_ == nullptr) {
+  if (transport_ == nullptr) {
     return false;
   }
-
-#ifdef MUBUS_MBED
-  size_t bytes_read = 0;
-  if (!readTransportBytes(&byte, 1, kTransportReadTimeoutMs, bytes_read)) {
-    return false;
-  }
-  return bytes_read == 1;
-#else
-  if (!port_->available()) {
-    return false;
-  }
-
-  const int value = port_->read();
-  if (value < 0) {
-    return false;
-  }
-
-  byte = static_cast<uint8_t>(value);
-  return true;
-#endif
+  return transport_->readByte(byte);
 }
 
 bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
