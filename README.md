@@ -5,182 +5,144 @@
 A high performance, low overhead serial communication protocol
 
 > [!IMPORTANT]
-> μBus currently only support Arduino and other related boards that have a `HardwareSerial` object
+> μBus currently supports Arduino-compatible targets with `HardwareSerial`, and mbed targets with `mbed::BufferedSerial`.
 
 # Installation
-μBus is currently aimed at being used with PlatformIO, it is available on the PlatformIO registry but likely not up to date due to active development.
-In order to install μBus run the following in your PlatformIO project root folder:
-```
+μBus is currently aimed at PlatformIO-based workflows.
+
+```sh
 pio pkg install -l "https://github.com/h3cx/MuBus.git"
 ```
+
 > [!IMPORTANT]
 > Expect regular breaking changes during initial development.
 
-# Usage
-## Constructor
-The basic constructor follows the following pattern:
+# Quick start
+## Arduino (cooperative parser via `tick()`)
 ```cpp
-MuBusNode(HardwareSerial& port, uint8_t addr)
-```
-For example, on an Arduino Mega using `Serial1` and with a device address of `0x01` this would give:
-```cpp
-MuBusNode node(&Serial1, 0x01);
-```
-You will still be required to call `Serial1.begin()` seperately as μBus doesn't handle this yet
+#include <Arduino.h>
+#include <MuBus.h>
 
-## Sending Data
-Once you have set up your node, you can now send data from it. Use `send(dst, data, len)` for unicast and `broadcast(...)` for broadcast (`dest_addr = 0x00`).
-To broadcast you use the following function:
-```cpp
-bool broadcast(uint8_t *buf, uint16_t len)
-```
-The maximum `len` is 506 bytes, this is a limitation of μBus which has a maximum dataframe of 512 bytes.
-An example usage sending a custom data struct:
-```cpp
-data_struct_t some_data;
-node.broadcast(&some_data, sizeof(some_data));
-```
+constexpr uint32_t kBaud = 115200;
+constexpr uint8_t kNodeAddr = 0x01;
 
-## Receiving Data
-In order to receive data, the parse function can be used:
-```cpp
-bool parse()
-```
-This function will search for header bytes in the serial interface, and only once it finds a matching packet will it fully read it. If it reads a valid data frame, it will return true. Destination filtering is applied as an explicit step after full header decode (after `SRC`, `DST`, and `LEN` are available).
-This function is called in a loop to form the parser:
-```cpp
-while(true) {
-  if (node.parse()) {
-    //do something
+MuBus::MuBusNode node(&Serial1, kNodeAddr);
+
+void setup() {
+  Serial.begin(kBaud);
+  Serial1.begin(kBaud);
+}
+
+void loop() {
+  node.tick(); // parser work on non-RTOS targets
+
+  MuBus::MuBusNode::Frame frame;
+  if (node.receive(frame)) {
+    // use frame.src, frame.dst, frame.len, frame.payload
   }
 }
 ```
-In order to access the payload the following functions can be used:
+
+## mbed (worker thread parser)
 ```cpp
-uint8_t *getPayload();
-uint16_t getPayloadSize();
-```
+#include <mbed.h>
+#include <MuBus.h>
 
+constexpr uint8_t kNodeAddr = 0x02;
 
+mbed::BufferedSerial bus_port(PA_9, PA_10, 115200);
+MuBus::MuBusNode node(&bus_port, kNodeAddr);
 
-
-## Example sketches
-Sketches are available under `examples/`:
-
-- `examples/sender_basic/sender_basic.ino`: simple periodic sender.
-- `examples/receiver_callback_threaded/receiver_callback_threaded.ino`: callback receiver with parser worker thread on mbed RTOS targets (falls back to `tick()` elsewhere).
-- `examples/receiver_polling/receiver_polling.ino`: polling receiver using `available()/receive()`.
-- `examples/receiver_migration_parse_getpayload/receiver_migration_parse_getpayload.ino`: migration from deprecated `parse()+getPayload()` APIs to `receive(Frame&)`.
-
-> [!IMPORTANT]
-> When the MuBus parser is active, do not read from the UART directly (`Serial.read()`, `Serial.peek()`, etc.).
-> Read incoming frames only through MuBus internals (`onFrame`, `available()/receive()`, or deprecated wrappers).
-
-## Address Semantics
-Address fields are one byte (`uint8_t`) and use the following meanings:
-
-- **Unicast:** any non-zero, non-reserved destination (`0x01` to `0xFE`) is treated as a unicast destination address.
-- **Broadcast:** destination `0x00` targets every node that is configured to accept broadcasts.
-- **Reserved:** `0xFF` is reserved and should not be assigned as a normal node address.
-
-### Parser destination filtering modes
-Destination filtering is configurable through `MuBusConfig::destination_filter_mode`:
-
-- `DestinationFilterMode::AddressedOrBroadcast` (default): accept frames addressed to this node or broadcast (`0x00`).
-- `DestinationFilterMode::AcceptBroadcastOnly`: accept only broadcast frames.
-- `DestinationFilterMode::AcceptUnicastOnly`: accept only unicast frames addressed to this node.
-- `DestinationFilterMode::Promiscuous`: accept all destinations (debug/sniffer mode).
-
-Example:
-```cpp
-MuBus::MuBusConfig config;
-config.destination_filter_mode = MuBus::DestinationFilterMode::Promiscuous;
-MuBus::MuBusNode node(&Serial1, 0x01, config);
-```
-
-## Optional parser worker mode
-`MuBusNode` can now run parsing in either:
-- a dedicated worker thread (mbed targets with RTOS), or
-- a cooperative single-threaded path via `tick()` (Arduino and minimal targets).
-
-### Frame callback
-Register a callback that fires whenever a complete frame is accepted:
-```cpp
-void onFrameReady(const MuBus::MuBusNode::Frame &frame) {
-  // frame.payload points to valid bytes for frame.len
+void onFrame(const MuBus::MuBusNode::Frame &frame) {
+  // consume frame here
 }
 
-node.onFrame(onFrameReady);
-```
+int main() {
+  node.onFrame(onFrame);
 
-### mbed RTOS worker thread
-```cpp
-// uses previously configured values
-node.startParserThread();
+  // parser runs in dedicated RTOS thread on mbed targets
+  if (!node.startParserThread(1, 200)) {
+    // fallback if needed
+    while (true) {
+      node.tick();
+      ThisThread::sleep_for(1ms);
+    }
+  }
 
-// or configure poll interval + stop timeout (ms)
-node.startParserThread(2, 200);
-
-// stop and join worker
-node.stopParserThread();
-```
-
-### Arduino / non-RTOS cooperative parser
-Call `tick()` from your main loop to use the same parser core without threading:
-```cpp
-void loop() {
-  node.tick();
-  // application work
+  while (true) {
+    ThisThread::sleep_for(100ms);
+  }
 }
 ```
 
-## Memory Footprint
-Packet RX/TX storage is now embedded in `MuBusNode` as fixed-size arrays (no per-frame dynamic allocation in the hot path).
+# Protocol specification
+## Byte layout
+All multibyte protocol fields use **little-endian** encoding.
 
-Let:
-- `H = 6` (`kHeaderSize`)
-- `P = max_payload_size` (bounded by `kMaxPayload`, default 506)
-- `M = metadata per queued entry` (`src[1] + dst[1] + len[2] = 4` bytes)
+| Offset | Size | Field | Notes |
+|---|---:|---|---|
+| 0 | 1 | `SYNC0` | fixed `0xD3` |
+| 1 | 1 | `SYNC1` | fixed `0x91` |
+| 2 | 1 | `SRC` | source node address |
+| 3 | 1 | `DST` | destination address (`0x00` broadcast, `0xFF` reserved) |
+| 4 | 1 | `LEN_L` | payload length low byte |
+| 5 | 1 | `LEN_H` | payload length high byte |
+| 6.. | `LEN` | `PAYLOAD` | raw payload bytes |
+| tail | 0/1/2 | `CRC` | omitted for `CrcMode::None`, 1 byte for `Crc8`, 2 bytes for `Crc16` |
 
-Then:
+Length decode formula:
 
-- **Single-slot mode footprint** (RX single-slot + TX direct):
-  - Parser scratch buffer: `P`
-  - Pending RX frame storage: `H + P + M`
-  - Total hot-path buffer footprint: `2P + H + M`
+```text
+LEN = LEN_L | (LEN_H << 8)
+```
 
-- **Ring-buffer mode footprint per entry**:
-  - `H + P + M`
-  - With defaults: `6 + 506 + 4 = 516` bytes per entry.
+Maximum payload size is 506 bytes, keeping the base header+payload frame bounded to 512 bytes.
 
-Total queue storage in ring/queued mode is:
-- RX: `rx_queue_depth * (H + P + M)`
-- TX: `tx_queue_depth * (H + P + M)`
+## Address semantics
+- **Unicast:** `0x01` to `0xFE`
+- **Broadcast:** `0x00`
+- **Reserved:** `0xFF` (do not assign as a node address)
 
-## Protocol Spec
-Frame layout is defined byte-for-byte as:
+## Destination filter modes
+Configure with `MuBusConfig::destination_filter_mode`:
+- `AddressedOrBroadcast` (default)
+- `AcceptBroadcastOnly`
+- `AcceptUnicastOnly`
+- `Promiscuous`
 
-- `SYNC[2]`: `0xD3`, `0x91`
-- `SRC[1]`: source node address
-- `DST[1]`: destination node address (`0x00` for broadcast, `0xFF` reserved)
-- `LEN[2]`: payload length in **little-endian** byte order (`LEN[0]` = low byte, `LEN[1]` = high byte)
-- `PAYLOAD[LEN]`: payload bytes
-- optional `CRC[1|2]`: present only when `MuBusConfig::crc_mode` is `Crc8` or `Crc16`
+# Configuration matrix
+Use `MuBusConfig` to pick queueing and parser execution model.
 
-Total frame size is `6 + LEN + crc_bytes`, where `crc_bytes` is:
-- `0` for `CrcMode::None`
-- `1` for `CrcMode::Crc8`
-- `2` for `CrcMode::Crc16`
+| Dimension | Option | Behavior | Typical use |
+|---|---|---|---|
+| RX mode | `RxMode::SingleSlot` | Only most-recent pending frame storage (`rx_queue_depth` forced to 1) | Lowest RAM on small MCUs |
+| RX mode | `RxMode::Ring` | Queue of up to `rx_queue_depth` frames | Bursty traffic, slower consumers |
+| TX mode | `TxMode::Direct` | Write immediately (`tx_queue_depth` forced to 1) | Lowest latency and RAM |
+| TX mode | `TxMode::Queue` | Queue up to `tx_queue_depth` frames before flush | Producer/consumer decoupling |
+| Parser execution | `startParserThread(...)` | Dedicated parser worker thread (mbed RTOS targets) | Background parsing with callback flow |
+| Parser execution | `tick()` / `poll()` | Cooperative parsing in main loop | Arduino / no RTOS |
 
-## Diagnostics
-Use parser diagnostics for runtime telemetry and debugging:
+# RAM and CPU tradeoff notes
+- **Single-slot + direct TX** minimizes memory use and is usually best for simple request/response loops.
+- **Ring RX and/or queued TX** increases RAM roughly linearly with queue depth but smooths bursts and reduces producer blocking.
+- Approximate slot footprint: `kHeaderSize + max_payload + metadata` = `6 + 506 + 4 = 516` bytes per queue entry at defaults.
+- Increasing queue depths increases copy/queue bookkeeping work, but reduces dropped frames when producers outrun consumers.
+- Threaded parser mode moves parse work off the main loop (mbed RTOS), while `tick()` keeps scheduling explicit and deterministic on bare-metal loops.
+
+# Error handling and diagnostics
+## Return-value checks
+`send`, `broadcast`, `receive`, and parser-thread control APIs return `bool`; always check them.
 
 ```cpp
-MuBus::MuBusConfig config;
-config.crc_mode = MuBus::CrcMode::Crc16;
-config.parser_timeout_ms = 20;
+if (!node.send(0x02, payload, payload_len)) {
+  // TX rejected (queue full, invalid args, transport not ready, etc.)
+}
+```
 
-MuBus::MuBusNode node(&Serial1, 0x01, config);
+## Runtime counters
+Use diagnostics for fault attribution and tuning:
+
+```cpp
 auto diag = node.getDiagnostics();
 // diag.sync_errors
 // diag.destination_mismatch
@@ -192,4 +154,55 @@ auto diag = node.getDiagnostics();
 node.resetDiagnostics();
 ```
 
-RX frames now have CRC verification before entering the queue/callback path when CRC is configured.
+Interpretation tips:
+- `sync_errors`: UART stream noise/misalignment.
+- `destination_mismatch`: frames observed but filtered by destination policy.
+- `length_overflow`: sender exceeding configured/allowed payload size.
+- `crc_fail`: corruption or CRC mode mismatch between peers.
+- `timeout_count`: partial frame stalled beyond `parser_timeout_ms`.
+- `drop_count`: queue pressure (RX/TX full) or rejected enqueue path.
+
+# Migration notes (legacy API → current API)
+Legacy wrappers are still present but deprecated:
+- `parse()`
+- `getPayload()`
+- `getPayloadSize()`
+- non-const `broadcast(uint8_t*, uint16_t)` and legacy `send(uint8_t*, uint16_t, uint8_t)` signatures
+
+Preferred replacements:
+- **Polling path:** `available()` + `receive(Frame&)`
+- **Callback path:** `onFrame(...)` (+ `startParserThread` on mbed RTOS, or `tick()` elsewhere)
+- **TX path:** `send(dst, const uint8_t*, len)` / `broadcast(const uint8_t*, len)`
+
+Migration pattern:
+```cpp
+// Old (deprecated)
+if (node.parse()) {
+  uint8_t *payload = node.getPayload();
+  uint16_t len = node.getPayloadSize();
+  // ...
+}
+
+// New
+MuBus::MuBusNode::Frame frame;
+if (node.receive(frame)) {
+  uint8_t *payload = frame.payload;
+  uint16_t len = frame.len;
+  // ...
+}
+```
+
+# Common pitfalls
+- Do **not** dual-read the UART stream (for example, `Serial.read()` while MuBus parsing is active). Let MuBus own RX bytes.
+- Ensure both peers use the same `crc_mode` and payload size expectations.
+- If you enable ring/queue modes, choose queue depths that fit your RAM budget.
+- On cooperative targets, call `tick()` frequently enough to avoid parser backlog/timeouts.
+- When using threaded mode, stop the parser thread cleanly before transport teardown.
+
+# Example sketches
+Sketches are available under `examples/`:
+
+- `examples/sender_basic/sender_basic.ino`: simple periodic sender.
+- `examples/receiver_callback_threaded/receiver_callback_threaded.ino`: callback receiver with parser worker thread on mbed RTOS targets (falls back to `tick()` elsewhere).
+- `examples/receiver_polling/receiver_polling.ino`: polling receiver using `available()/receive()`.
+- `examples/receiver_migration_parse_getpayload/receiver_migration_parse_getpayload.ino`: migration from deprecated `parse()+getPayload()` APIs to `receive(Frame&)`.
