@@ -176,7 +176,8 @@ Stops parser thread, releases owned transport, deletes thread sync primitives (w
 
 #### `bool begin(MuTransport *transport, uint8_t addr);`
 #### `bool begin(MuTransport *transport, uint8_t addr, const MuBusConfig &config);`
-Assigns transport and resets parser, status, diagnostics, queues.
+Rebinds transport/address (and optional config) at runtime, then resets parser, status, diagnostics, queues.
+- Not required for first use when the node was already constructed with a serial port constructor.
 - Returns `false` if transport pointer is null.
 
 #### `bool begin(arduino::HardwareSerial *port, uint8_t addr);`
@@ -190,7 +191,7 @@ On mbed-transport-enabled builds: creates owned serial transport and assigns.
 On disabled builds: always returns `false`.
 
 #### `void stop();`
-Stops parser thread, releases owned transport, clears callback, parser state, queues, status, diagnostics.
+Stops parser thread, releases owned transport, and clears callback/parser/queue/status/diagnostics state.
 
 ### 3.4 TX API
 
@@ -343,7 +344,7 @@ Typical threaded flow:
 2. Optionally call `onFrame(...)`.
 3. Call `startParserThread(...)`.
 4. Runtime: app can use callbacks and/or `available()/receive()`.
-5. Use `begin(...)` only when rebinding transport and/or reconfiguring after construction.
+5. If constructed with `arduino::HardwareSerial*` or `mbed::BufferedSerial*`, no initial `begin(...)` call is required; use `begin(...)` only when rebinding transport/address/config at runtime.
 6. Before teardown or rebind: call `stopParserThread()` then `stop()` / `begin(...)` new transport.
 
 ### 5.2 Behavior when thread mode is unavailable

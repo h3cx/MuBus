@@ -145,11 +145,13 @@ bool MuBusNode::assignTransport(MuTransport *transport, bool take_ownership,
                                 uint8_t addr, const MuBusConfig &config) {
   (void)stopParserThread();
   lockState();
-  if (owns_transport_) {
-    delete transport_;
-  }
+  MuTransport *old = transport_;
+  const bool old_owned = owns_transport_;
   transport_ = transport;
   owns_transport_ = take_ownership;
+  if (old_owned && old != nullptr) {
+    delete old;
+  }
   applyConfig(config);
   bindAddr(addr);
   resetParser();

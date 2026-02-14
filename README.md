@@ -79,6 +79,12 @@ int main() {
 ```
 
 
+
+## Lifecycle notes
+- If a `MuBusNode` is constructed with `arduino::HardwareSerial*` or `mbed::BufferedSerial*`, the node is immediately bound to an internal transport wrapper; `begin(...)` is not required for first use.
+- Use `begin(...)` only when rebinding transport/address/configuration at runtime.
+- `stop()` tears down owned transport objects and resets parser/queue/diagnostic state.
+
 # Build-time backend and RTOS selection
 MuBus keeps RTOS symbols in code as `rtos::Thread`, `rtos::Mutex`, `rtos::EventFlags`, `rtos::Semaphore`, and `rtos::ThisThread`.
 When mbed support is enabled (`MUBUS_HAS_MBED=1`), MuBus provides the required forward declarations/bridge so `rtos::...` names resolve consistently.
