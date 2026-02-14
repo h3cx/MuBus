@@ -60,3 +60,16 @@ In order to access the payload the following functions can be used:
 uint8_t *getPayload();
 uint16_t getPayloadSize();
 ```
+
+
+## Protocol Spec
+Frame layout is defined byte-for-byte as:
+
+- `SYNC[2]`: `0xD3`, `0x91`
+- `SRC[1]`: source node address
+- `DST[1]`: destination node address (`0x00` for broadcast)
+- `LEN[2]`: payload length in **little-endian** byte order (`LEN[0]` = low byte, `LEN[1]` = high byte)
+- `PAYLOAD[LEN]`: payload bytes
+- optional `CRC[1|2]`: present only when CRC is enabled by configuration
+
+Total frame size without CRC is `6 + LEN` bytes.
