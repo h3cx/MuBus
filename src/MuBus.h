@@ -38,6 +38,7 @@ public:
 
 class MuBusNode {
 private:
+  static constexpr uint32_t kTransportReadTimeoutMs = 5;
   enum class ParserState : uint8_t {
     Sync0,
     Sync1,
@@ -83,6 +84,10 @@ private:
   FrameCallback frame_callback_ = nullptr;
   bool readFrame(Frame &frame);
   void resetParser();
+#ifdef MUBUS_MBED
+  bool readTransportBytes(uint8_t *buffer, size_t len, uint32_t timeout_ms,
+                          size_t &bytes_read);
+#endif
   bool readTransportByte(uint8_t &byte);
   bool parseByte(uint8_t byte, Frame &frame);
 

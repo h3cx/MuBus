@@ -163,16 +163,54 @@ void MuBusNode::resetParser() {
   parser_ = ParserContext{};
 }
 
+#ifdef MUBUS_MBED
+bool MuBusNode::readTransportBytes(uint8_t *buffer, size_t len,
+                                  uint32_t timeout_ms,
+                                  size_t &bytes_read) {
+  bytes_read = 0;
+  if (buffer == nullptr || len == 0 || port_ == nullptr) {
+    return false;
+  }
+
+  const uint32_t start_ms = millis();
+  while (bytes_read < len) {
+    if (port_->readable()) {
+      const ssize_t result = port_->read(buffer + bytes_read, len - bytes_read);
+      if (result > 0) {
+        bytes_read += static_cast<size_t>(result);
+        continue;
+      }
+      if (result < 0) {
+        return false;
+      }
+    }
+
+    if (timeout_ms == 0) {
+      break;
+    }
+
+    if (static_cast<uint32_t>(millis() - start_ms) >= timeout_ms) {
+      break;
+    }
+
+    delay(1);
+  }
+
+  return bytes_read > 0;
+}
+
+#endif
 bool MuBusNode::readTransportByte(uint8_t &byte) {
   if (port_ == nullptr) {
     return false;
   }
 
 #ifdef MUBUS_MBED
-  if (!port_->readable()) {
+  size_t bytes_read = 0;
+  if (!readTransportBytes(&byte, 1, kTransportReadTimeoutMs, bytes_read)) {
     return false;
   }
-  return port_->read(&byte, 1) == 1;
+  return bytes_read == 1;
 #else
   if (!port_->available()) {
     return false;
