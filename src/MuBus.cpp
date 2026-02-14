@@ -2,11 +2,27 @@
 
 #include <stdio.h>
 
+#if !__has_include(<Arduino.h>)
+#include <chrono>
+#endif
+
 #if __has_include(<mbed.h>)
 #include <mbed.h>
 #endif
 
 namespace MuBus {
+
+namespace {
+uint32_t nowMs() {
+#if __has_include(<Arduino.h>)
+  return millis();
+#else
+  using namespace std::chrono;
+  return static_cast<uint32_t>(
+      duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
+#endif
+}
+} // namespace
 
 void encodeHeaderBytewise(uint8_t *out, uint8_t src, uint8_t dst, uint16_t len) {
   out[0] = kSync0;
@@ -141,6 +157,7 @@ bool MuBusNode::assignTransport(MuTransport *transport, bool take_ownership,
   rx_head_ = rx_tail_ = rx_count_ = 0;
   tx_head_ = tx_tail_ = tx_count_ = 0;
   status_ = NodeStatus{};
+  diagnostics_ = Diagnostics{};
   const bool ok = transport_ != nullptr;
   unlockState();
   return ok;
@@ -169,11 +186,12 @@ void MuBusNode::stop() {
   rx_head_ = rx_tail_ = rx_count_ = 0;
   tx_head_ = tx_tail_ = tx_count_ = 0;
   status_ = NodeStatus{};
+  diagnostics_ = Diagnostics{};
   unlockState();
 }
 
-uint8_t MuBusNode::computeCrc(uint8_t src, uint8_t dst, uint16_t len,
-                              const uint8_t *payload) const {
+uint8_t MuBusNode::computeCrc8(uint8_t src, uint8_t dst, uint16_t len,
+                               const uint8_t *payload) const {
   uint8_t crc = 0;
   crc ^= src;
   crc ^= dst;
@@ -183,6 +201,39 @@ uint8_t MuBusNode::computeCrc(uint8_t src, uint8_t dst, uint16_t len,
     crc ^= payload[i];
   }
   return crc;
+}
+
+uint16_t MuBusNode::computeCrc16(uint8_t src, uint8_t dst, uint16_t len,
+                                 const uint8_t *payload) const {
+  uint16_t crc = 0xFFFF;
+  auto step = [&crc](uint8_t b) {
+    crc ^= static_cast<uint16_t>(b) << 8;
+    for (uint8_t i = 0; i < 8; ++i) {
+      crc = (crc & 0x8000) != 0 ? static_cast<uint16_t>((crc << 1) ^ 0x1021)
+                                : static_cast<uint16_t>(crc << 1);
+    }
+  };
+
+  step(src);
+  step(dst);
+  step(static_cast<uint8_t>(len & 0xFF));
+  step(static_cast<uint8_t>((len >> 8) & 0xFF));
+  for (uint16_t i = 0; i < len; ++i) {
+    step(payload[i]);
+  }
+  return crc;
+}
+
+uint8_t MuBusNode::crcFieldSize() const {
+  switch (config_.crc_mode) {
+  case CrcMode::Crc8:
+    return 1;
+  case CrcMode::Crc16:
+    return 2;
+  case CrcMode::None:
+  default:
+    return 0;
+  }
 }
 
 bool MuBusNode::writeFrameNow(uint8_t dst, const uint8_t *data, uint16_t len) {
@@ -202,19 +253,29 @@ bool MuBusNode::writeFrameNow(uint8_t dst, const uint8_t *data, uint16_t len) {
     return false;
   }
 
-  if (config_.crc_enabled) {
-    const uint8_t crc = computeCrc(out_packet_.getSource(), dst, len, data);
+  switch (config_.crc_mode) {
+  case CrcMode::Crc8: {
+    const uint8_t crc = computeCrc8(out_packet_.getSource(), dst, len, data);
     return transport_->write(&crc, 1);
   }
-
-  static const uint8_t zero_crc = 0;
-  return transport_->write(&zero_crc, 1);
+  case CrcMode::Crc16: {
+    const uint16_t crc =
+        computeCrc16(out_packet_.getSource(), dst, len, data);
+    const uint8_t crc_buf[2] = {static_cast<uint8_t>(crc & 0xFF),
+                                static_cast<uint8_t>((crc >> 8) & 0xFF)};
+    return transport_->write(crc_buf, sizeof(crc_buf));
+  }
+  case CrcMode::None:
+  default:
+    return true;
+  }
 }
 
 bool MuBusNode::enqueueTxFrame(uint8_t dst, const uint8_t *data, uint16_t len) {
   if (tx_count_ >= config_.tx_queue_depth) {
     status_.tx_queue_full = true;
     status_.dropped_frame_count++;
+    diagnostics_.drop_count++;
     return false;
   }
 
@@ -284,6 +345,7 @@ bool MuBusNode::enqueueRxFrame(const Frame &frame) {
   if (rx_count_ >= config_.rx_queue_depth) {
     status_.rx_queue_full = true;
     status_.dropped_frame_count++;
+    diagnostics_.drop_count++;
     return false;
   }
 
@@ -484,8 +546,16 @@ void MuBusNode::onFrame(FrameCallback callback) {
   unlockState();
 }
 
-MuBusNode::NodeStatus MuBusNode::getStatus() const {
-  return status_;
+MuBusNode::NodeStatus MuBusNode::getStatus() const { return status_; }
+
+MuBusNode::Diagnostics MuBusNode::getDiagnostics() const {
+  return diagnostics_;
+}
+
+void MuBusNode::resetDiagnostics() {
+  lockState();
+  diagnostics_ = Diagnostics{};
+  unlockState();
 }
 
 bool MuBusNode::send(uint8_t *buf, uint16_t len, uint8_t recv_addr) {
@@ -504,7 +574,25 @@ bool MuBusNode::parse() {
   return true;
 }
 
-void MuBusNode::resetParser() { parser_ = ParserContext{}; }
+void MuBusNode::resetParser() {
+  parser_ = ParserContext{};
+  parser_last_byte_ms_ = 0;
+}
+
+void MuBusNode::updateParserTimeout() {
+  if (config_.parser_timeout_ms == 0 || parser_.state == ParserState::Sync0 ||
+      parser_last_byte_ms_ == 0) {
+    return;
+  }
+
+  const uint32_t elapsed = nowMs() - parser_last_byte_ms_;
+  if (elapsed > config_.parser_timeout_ms) {
+    diagnostics_.timeout_count++;
+    diagnostics_.drop_count++;
+    status_.dropped_frame_count++;
+    resetParser();
+  }
+}
 
 bool MuBusNode::readTransportByte(uint8_t &byte) {
   if (transport_ == nullptr) {
@@ -513,20 +601,35 @@ bool MuBusNode::readTransportByte(uint8_t &byte) {
   return transport_->readByte(byte);
 }
 
-bool MuBusNode::finalizeParsedFrame(uint8_t crc_byte, Frame &frame) {
+bool MuBusNode::finalizeParsedFrame(Frame &frame) {
   in_packet_.bindSource(parser_.src);
   in_packet_.bindDest(parser_.dst);
   in_packet_.setSize(parser_.len);
 
   if (in_packet_.getDest() != out_packet_.getSource() &&
       in_packet_.getDest() != 0x00) {
+    diagnostics_.destination_mismatch++;
+    diagnostics_.drop_count++;
+    status_.dropped_frame_count++;
     return false;
   }
 
-  if (config_.crc_enabled) {
+  if (config_.crc_mode == CrcMode::Crc8) {
     const uint8_t expected_crc =
-        computeCrc(parser_.src, parser_.dst, parser_.len, parser_payload_);
-    if (crc_byte != expected_crc) {
+        computeCrc8(parser_.src, parser_.dst, parser_.len, parser_payload_);
+    if (static_cast<uint8_t>(parser_.rx_crc & 0xFF) != expected_crc) {
+      diagnostics_.crc_fail++;
+      diagnostics_.drop_count++;
+      status_.dropped_frame_count++;
+      return false;
+    }
+  } else if (config_.crc_mode == CrcMode::Crc16) {
+    const uint16_t expected_crc =
+        computeCrc16(parser_.src, parser_.dst, parser_.len, parser_payload_);
+    if (parser_.rx_crc != expected_crc) {
+      diagnostics_.crc_fail++;
+      diagnostics_.drop_count++;
+      status_.dropped_frame_count++;
       return false;
     }
   }
@@ -543,6 +646,8 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
   case ParserState::Sync0:
     if (byte == kSync0) {
       parser_.state = ParserState::Sync1;
+    } else {
+      diagnostics_.sync_errors++;
     }
     return false;
 
@@ -552,6 +657,7 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
       return false;
     }
 
+    diagnostics_.sync_errors++;
     parser_.state = (byte == kSync0) ? ParserState::Sync1 : ParserState::Sync0;
     return false;
 
@@ -573,13 +679,22 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
   case ParserState::Len1:
     parser_.len |= static_cast<uint16_t>(byte) << 8;
     parser_.payload_index = 0;
+    parser_.rx_crc = 0;
 
     if (parser_.len > config_.max_payload_size) {
+      diagnostics_.length_overflow++;
+      diagnostics_.drop_count++;
+      status_.dropped_frame_count++;
       parser_.state = (byte == kSync0) ? ParserState::Sync1 : ParserState::Sync0;
       return false;
     }
 
     parser_.state = (parser_.len == 0) ? ParserState::Crc : ParserState::Payload;
+    if (parser_.len == 0 && crcFieldSize() == 0) {
+      const bool complete = finalizeParsedFrame(frame);
+      resetParser();
+      return complete;
+    }
     return false;
 
   case ParserState::Payload:
@@ -588,11 +703,37 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
       return false;
     }
 
+    if (crcFieldSize() == 0) {
+      const bool complete = finalizeParsedFrame(frame);
+      resetParser();
+      return complete;
+    }
+
     parser_.state = ParserState::Crc;
+    parser_.payload_index = 0;
     return false;
 
   case ParserState::Crc: {
-    const bool complete = finalizeParsedFrame(byte, frame);
+    if (crcFieldSize() == 1) {
+      parser_.rx_crc = byte;
+      const bool complete = finalizeParsedFrame(frame);
+      resetParser();
+      return complete;
+    }
+
+    if (crcFieldSize() == 2) {
+      if (parser_.payload_index == 0) {
+        parser_.rx_crc = byte;
+        parser_.payload_index = 1;
+        return false;
+      }
+      parser_.rx_crc |= static_cast<uint16_t>(byte) << 8;
+      const bool complete = finalizeParsedFrame(frame);
+      resetParser();
+      return complete;
+    }
+
+    const bool complete = finalizeParsedFrame(frame);
     resetParser();
     return complete;
   }
@@ -603,13 +744,17 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
 }
 
 bool MuBusNode::readFrame(Frame &frame) {
+  updateParserTimeout();
+
   uint8_t byte = 0;
   while (readTransportByte(byte)) {
+    parser_last_byte_ms_ = nowMs();
     if (parseByte(byte, frame)) {
       return true;
     }
   }
 
+  updateParserTimeout();
   return false;
 }
 

@@ -54,6 +54,16 @@ static_assert(kMaxTxQueueDepth <= UINT8_MAX,
 
 enum class RxMode : uint8_t { SingleSlot, Ring };
 enum class TxMode : uint8_t { Direct, Queue };
+enum class CrcMode : uint8_t { None, Crc8, Crc16 };
+
+struct MuBusDiagnostics {
+  uint32_t sync_errors = 0;
+  uint32_t destination_mismatch = 0;
+  uint32_t length_overflow = 0;
+  uint32_t crc_fail = 0;
+  uint32_t timeout_count = 0;
+  uint32_t drop_count = 0;
+};
 
 struct MuBusConfig {
   RxMode rx_mode = RxMode::SingleSlot;
@@ -61,7 +71,8 @@ struct MuBusConfig {
   uint8_t rx_queue_depth = 1;
   uint8_t tx_queue_depth = 1;
   uint16_t max_payload_size = kMaxPayload;
-  bool crc_enabled = false;
+  CrcMode crc_mode = CrcMode::None;
+  uint32_t parser_timeout_ms = 0;
 };
 
 static_assert(static_cast<uint8_t>(RxMode::SingleSlot) !=
@@ -129,6 +140,7 @@ private:
     uint8_t dst = 0x00;
     uint16_t len = 0x0000;
     uint16_t payload_index = 0x0000;
+    uint16_t rx_crc = 0x0000;
   };
 
   struct FrameSlot {
@@ -142,6 +154,7 @@ private:
   bool owns_transport_ = false;
   MuBusConfig config_{};
   MuBusStatus status_{};
+  MuBusDiagnostics diagnostics_{};
   MuPacketHeader out_packet_{};
   MuPacketHeader in_packet_{};
   uint8_t parser_payload_[kMaxPayload] = {0};
@@ -164,6 +177,7 @@ private:
 
   ParserThreadConfig parser_thread_config_{};
   bool parser_thread_running_ = false;
+  uint32_t parser_last_byte_ms_ = 0;
 
 #if __has_include(<mbed.h>)
   mbed::rtos::Thread *parser_thread_ = nullptr;
@@ -181,6 +195,7 @@ public:
   };
 
   using NodeStatus = MuBusStatus;
+  using Diagnostics = MuBusDiagnostics;
   using FrameCallback = void (*)(const Frame &frame);
 
 private:
@@ -192,10 +207,14 @@ private:
   bool enqueueTxFrame(uint8_t dst, const uint8_t *data, uint16_t len);
   bool flushTxQueue();
   bool writeFrameNow(uint8_t dst, const uint8_t *data, uint16_t len);
-  uint8_t computeCrc(uint8_t src, uint8_t dst, uint16_t len,
-                     const uint8_t *payload) const;
-  bool finalizeParsedFrame(uint8_t crc_byte, Frame &frame);
+  uint8_t computeCrc8(uint8_t src, uint8_t dst, uint16_t len,
+                      const uint8_t *payload) const;
+  uint16_t computeCrc16(uint8_t src, uint8_t dst, uint16_t len,
+                        const uint8_t *payload) const;
+  bool finalizeParsedFrame(Frame &frame);
   void resetParser();
+  void updateParserTimeout();
+  uint8_t crcFieldSize() const;
   bool readTransportByte(uint8_t &byte);
   bool parseByte(uint8_t byte, Frame &frame);
   bool assignTransport(MuTransport *transport, bool take_ownership, uint8_t addr,
@@ -244,6 +263,8 @@ public:
   bool startParserThread(uint32_t poll_interval_ms, uint32_t stop_timeout_ms);
   bool stopParserThread();
   NodeStatus getStatus() const;
+  Diagnostics getDiagnostics() const;
+  void resetDiagnostics();
 
   // Deprecated: use send(dst, data, len) instead.
   bool send(uint8_t *buf, uint16_t len, uint8_t recv_addr);
