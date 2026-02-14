@@ -62,6 +62,29 @@ uint16_t getPayloadSize();
 ```
 
 
+## Memory Footprint
+Packet RX/TX storage is now embedded in `MuBusNode` as fixed-size arrays (no per-frame dynamic allocation in the hot path).
+
+Let:
+- `H = 6` (`kHeaderSize`)
+- `P = max_payload_size` (bounded by `kMaxPayload`, default 506)
+- `M = metadata per queued entry` (`src[1] + dst[1] + len[2] = 4` bytes)
+
+Then:
+
+- **Single-slot mode footprint** (RX single-slot + TX direct):
+  - Parser scratch buffer: `P`
+  - Pending RX frame storage: `H + P + M`
+  - Total hot-path buffer footprint: `2P + H + M`
+
+- **Ring-buffer mode footprint per entry**:
+  - `H + P + M`
+  - With defaults: `6 + 506 + 4 = 516` bytes per entry.
+
+Total queue storage in ring/queued mode is:
+- RX: `rx_queue_depth * (H + P + M)`
+- TX: `tx_queue_depth * (H + P + M)`
+
 ## Protocol Spec
 Frame layout is defined byte-for-byte as:
 

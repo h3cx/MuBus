@@ -25,6 +25,25 @@ static constexpr uint16_t kMaxPayload = 506;
 static constexpr uint8_t kMaxRxQueueDepth = 8;
 static constexpr uint8_t kMaxTxQueueDepth = 8;
 
+static_assert(kHeaderSize == 6, "MuBus header must be exactly 6 bytes");
+static_assert(kHeaderSize + kMaxPayload == 512,
+              "MuBus max frame size must remain 512 bytes");
+static_assert(kMaxRxQueueDepth > 0,
+              "kMaxRxQueueDepth must be at least 1 for single-slot fallback");
+static_assert(kMaxTxQueueDepth > 0,
+              "kMaxTxQueueDepth must be at least 1 for direct TX fallback");
+static constexpr size_t kFrameSlotMetadataSize =
+    sizeof(uint8_t) + sizeof(uint8_t) + sizeof(uint16_t);
+static constexpr size_t kFrameSlotFootprint =
+    kHeaderSize + kMaxPayload + kFrameSlotMetadataSize;
+
+static_assert(kMaxPayload <= UINT16_MAX,
+              "kMaxPayload must fit in packet length field");
+static_assert(kMaxRxQueueDepth <= UINT8_MAX,
+              "kMaxRxQueueDepth must fit queue index counters");
+static_assert(kMaxTxQueueDepth <= UINT8_MAX,
+              "kMaxTxQueueDepth must fit queue index counters");
+
 enum class RxMode : uint8_t { SingleSlot, Ring };
 enum class TxMode : uint8_t { Direct, Queue };
 
@@ -36,6 +55,13 @@ struct MuBusConfig {
   uint16_t max_payload_size = kMaxPayload;
   bool crc_enabled = false;
 };
+
+static_assert(static_cast<uint8_t>(RxMode::SingleSlot) !=
+                  static_cast<uint8_t>(RxMode::Ring),
+              "RxMode enum values must stay distinct");
+static_assert(static_cast<uint8_t>(TxMode::Direct) !=
+                  static_cast<uint8_t>(TxMode::Queue),
+              "TxMode enum values must stay distinct");
 
 struct MuBusStatus {
   bool rx_queue_full = false;
@@ -108,8 +134,8 @@ private:
   bool owns_transport_ = false;
   MuBusConfig config_{};
   MuBusStatus status_{};
-  MuPacketHeader *out_packet_;
-  MuPacketHeader *in_packet_ = new MuPacketHeader();
+  MuPacketHeader out_packet_{};
+  MuPacketHeader in_packet_{};
   uint8_t parser_payload_[kMaxPayload] = {0};
   bool has_pending_frame_ = false;
   ParserContext parser_{};
