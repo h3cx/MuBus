@@ -2,7 +2,7 @@
 
 #include "../MuBus.h"
 
-#if __has_include(<HardwareSerial.h>)
+#if MUBUS_ENABLE_ARDUINO_TRANSPORT
 #include <HardwareSerial.h>
 
 namespace MuBus {

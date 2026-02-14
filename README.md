@@ -65,14 +65,41 @@ int main() {
     // fallback if needed
     while (true) {
       node.tick();
-      ThisThread::sleep_for(1ms);
+      rtos::ThisThread::sleep_for(1ms);
     }
   }
 
   while (true) {
-    ThisThread::sleep_for(100ms);
+    rtos::ThisThread::sleep_for(100ms);
   }
 }
+```
+
+
+# Build-time backend and RTOS selection
+MuBus keeps RTOS symbols in code as `rtos::Thread`, `rtos::Mutex`, `rtos::EventFlags`, `rtos::Semaphore`, and `rtos::ThisThread`.
+When mbed support is enabled (`MUBUS_HAS_MBED=1`), MuBus provides the required forward declarations/bridge so `rtos::...` names resolve consistently.
+
+Primary compile-time switches:
+- `MUBUS_ENABLE_PARSER_THREAD` (default: `MUBUS_HAS_MBED`)
+- `MUBUS_ENABLE_ARDUINO_TRANSPORT` (default: `MUBUS_HAS_ARDUINO`)
+- `MUBUS_ENABLE_MBED_TRANSPORT` (default: `MUBUS_HAS_MBED`)
+
+`library.json` carries the parser-thread feature flag, and you can override it per target in PlatformIO `build_flags`.
+
+Example:
+```ini
+[env:my_mbed]
+build_flags =
+  -DMUBUS_ENABLE_PARSER_THREAD=1
+  -DMUBUS_ENABLE_MBED_TRANSPORT=1
+  -DMUBUS_ENABLE_ARDUINO_TRANSPORT=0
+
+[env:my_arduino]
+build_flags =
+  -DMUBUS_ENABLE_PARSER_THREAD=0
+  -DMUBUS_ENABLE_MBED_TRANSPORT=0
+  -DMUBUS_ENABLE_ARDUINO_TRANSPORT=1
 ```
 
 # Protocol specification
