@@ -190,10 +190,10 @@ private:
   uint32_t parser_last_byte_ms_ = 0;
 
 #if __has_include(<mbed.h>)
-  mbed::rtos::Thread *parser_thread_ = nullptr;
-  mbed::rtos::Mutex *state_mutex_ = nullptr;
-  mbed::rtos::EventFlags *parser_thread_flags_ = nullptr;
-  mbed::rtos::Semaphore *parser_thread_stopped_ = nullptr;
+  rtos::Thread *parser_thread_ = nullptr;
+  rtos::Mutex *state_mutex_ = nullptr;
+  rtos::EventFlags *parser_thread_flags_ = nullptr;
+  rtos::Semaphore *parser_thread_stopped_ = nullptr;
 #endif
 
 public:
@@ -247,16 +247,16 @@ public:
   MuBusNode(MuTransport *transport);
   MuBusNode(MuTransport *transport, uint8_t addr);
   MuBusNode(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-  MuBusNode(HardwareSerial *port);
-  MuBusNode(HardwareSerial *port, uint8_t addr);
+  MuBusNode(arduino::HardwareSerial *port);
+  MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
   MuBusNode(mbed::BufferedSerial *port);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
   ~MuBusNode();
 
   bool begin(MuTransport *transport, uint8_t addr);
   bool begin(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-  bool begin(HardwareSerial *port, uint8_t addr);
-  bool begin(HardwareSerial *port, uint8_t addr, const MuBusConfig &config);
+  bool begin(arduino::HardwareSerial *port, uint8_t addr);
+  bool begin(arduino::HardwareSerial *port, uint8_t addr, const MuBusConfig &config);
   bool begin(mbed::BufferedSerial *port, uint8_t addr);
   bool begin(mbed::BufferedSerial *port, uint8_t addr, const MuBusConfig &config);
   void stop();

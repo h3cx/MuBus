@@ -439,16 +439,16 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
     return false;
   }
   if (state_mutex_ == nullptr) {
-    state_mutex_ = new mbed::rtos::Mutex();
+    state_mutex_ = new rtos::Mutex();
   }
   if (parser_thread_flags_ == nullptr) {
-    parser_thread_flags_ = new mbed::rtos::EventFlags();
+    parser_thread_flags_ = new rtos::EventFlags();
   }
   if (parser_thread_stopped_ == nullptr) {
-    parser_thread_stopped_ = new mbed::rtos::Semaphore(0, 1);
+    parser_thread_stopped_ = new rtos::Semaphore(0, 1);
   }
   if (parser_thread_ == nullptr) {
-    parser_thread_ = new mbed::rtos::Thread(osPriorityNormal, 2048, nullptr,
+    parser_thread_ = new rtos::Thread(osPriorityNormal, 2048, nullptr,
                                             "mubus_parser");
   }
   if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
@@ -497,7 +497,7 @@ void MuBusNode::parserThreadLoop() {
   while (parser_thread_running_) {
     poll();
     if (parser_thread_flags_ == nullptr) {
-      mbed::ThisThread::sleep_for(
+      rtos::ThisThread::sleep_for(
           std::chrono::milliseconds(parser_thread_config_.poll_interval_ms));
       continue;
     }
