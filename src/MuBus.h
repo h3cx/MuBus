@@ -67,6 +67,7 @@ static constexpr uint8_t kHeaderSize = 6;
 static constexpr uint16_t kMaxPayload = 506;
 static constexpr uint8_t kMaxRxQueueDepth = 8;
 static constexpr uint8_t kMaxTxQueueDepth = 8;
+static constexpr uint32_t kDefaultParserThreadStackBytes = 4096;
 
 static_assert(kHeaderSize == 6, "MuBus header must be exactly 6 bytes");
 static_assert(kHeaderSize + kMaxPayload == 512,
@@ -114,6 +115,7 @@ struct MuBusConfig {
   uint16_t max_payload_size = kMaxPayload;
   CrcMode crc_mode = CrcMode::None;
   uint32_t parser_timeout_ms = 0;
+  uint32_t parser_thread_stack_bytes = kDefaultParserThreadStackBytes;
   DestinationFilterMode destination_filter_mode =
       DestinationFilterMode::AddressedOrBroadcast;
 };
