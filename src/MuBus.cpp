@@ -2,6 +2,10 @@
 
 #include <stdio.h>
 
+#if __has_include(<mbed.h>)
+#include <mbed.h>
+#endif
+
 namespace MuBus {
 
 void encodeHeaderBytewise(uint8_t *out, uint8_t src, uint8_t dst, uint16_t len) {
@@ -68,10 +72,32 @@ MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr,
   applyConfig(config_);
 }
 
+void MuBusNode::lockState() {
+#if __has_include(<mbed.h>)
+  if (state_mutex_ != nullptr) {
+    state_mutex_->lock();
+  }
+#endif
+}
+
+void MuBusNode::unlockState() {
+#if __has_include(<mbed.h>)
+  if (state_mutex_ != nullptr) {
+    state_mutex_->unlock();
+  }
+#endif
+}
+
 MuBusNode::~MuBusNode() {
+  (void)stopParserThread();
   if (owns_transport_) {
     delete transport_;
   }
+#if __has_include(<mbed.h>)
+  delete state_mutex_;
+  delete parser_thread_flags_;
+  delete parser_thread_stopped_;
+#endif
 }
 
 void MuBusNode::applyConfig(const MuBusConfig &config) {
@@ -101,6 +127,8 @@ void MuBusNode::applyConfig(const MuBusConfig &config) {
 
 bool MuBusNode::assignTransport(MuTransport *transport, bool take_ownership,
                                 uint8_t addr, const MuBusConfig &config) {
+  (void)stopParserThread();
+  lockState();
   if (owns_transport_) {
     delete transport_;
   }
@@ -113,7 +141,9 @@ bool MuBusNode::assignTransport(MuTransport *transport, bool take_ownership,
   rx_head_ = rx_tail_ = rx_count_ = 0;
   tx_head_ = tx_tail_ = tx_count_ = 0;
   status_ = NodeStatus{};
-  return transport_ != nullptr;
+  const bool ok = transport_ != nullptr;
+  unlockState();
+  return ok;
 }
 
 bool MuBusNode::begin(MuTransport *transport, uint8_t addr) {
@@ -126,6 +156,8 @@ bool MuBusNode::begin(MuTransport *transport, uint8_t addr,
 }
 
 void MuBusNode::stop() {
+  (void)stopParserThread();
+  lockState();
   if (owns_transport_) {
     delete transport_;
   }
@@ -137,6 +169,7 @@ void MuBusNode::stop() {
   rx_head_ = rx_tail_ = rx_count_ = 0;
   tx_head_ = tx_tail_ = tx_count_ = 0;
   status_ = NodeStatus{};
+  unlockState();
 }
 
 uint8_t MuBusNode::computeCrc(uint8_t src, uint8_t dst, uint16_t len,
@@ -212,17 +245,22 @@ bool MuBusNode::flushTxQueue() {
 }
 
 bool MuBusNode::send(uint8_t dst, const uint8_t *data, uint16_t len) {
+  lockState();
   if (len > config_.max_payload_size) {
+    unlockState();
     return false;
   }
 
   if (txQueueEnabled()) {
     const bool queued = enqueueTxFrame(dst, data, len);
     (void)flushTxQueue();
+    unlockState();
     return queued;
   }
 
-  return writeFrameNow(dst, data, len);
+  const bool ok = writeFrameNow(dst, data, len);
+  unlockState();
+  return ok;
 }
 
 bool MuBusNode::broadcast(const uint8_t *data, uint16_t len) {
@@ -281,7 +319,7 @@ bool MuBusNode::dequeueRxFrame(Frame &frame) {
   return true;
 }
 
-void MuBusNode::poll() {
+void MuBusNode::pollCore() {
   Frame frame;
   while (readFrame(frame)) {
     if (rxQueueEnabled()) {
@@ -291,7 +329,8 @@ void MuBusNode::poll() {
 
       if (frame_callback_ != nullptr) {
         const uint8_t callback_index =
-            static_cast<uint8_t>((rx_tail_ + kMaxRxQueueDepth - 1) % kMaxRxQueueDepth);
+            static_cast<uint8_t>((rx_tail_ + kMaxRxQueueDepth - 1) %
+                                 kMaxRxQueueDepth);
         Frame callback_frame;
         callback_frame.src = rx_slots_[callback_index].src;
         callback_frame.dst = rx_slots_[callback_index].dst;
@@ -313,33 +352,141 @@ void MuBusNode::poll() {
   }
 }
 
+void MuBusNode::poll() {
+  lockState();
+  pollCore();
+  unlockState();
+}
+
+void MuBusNode::tick() { poll(); }
+
+bool MuBusNode::startParserThread() {
+  return startParserThread(parser_thread_config_.poll_interval_ms,
+                           parser_thread_config_.stop_timeout_ms);
+}
+
+bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
+                                  uint32_t stop_timeout_ms) {
+  parser_thread_config_.poll_interval_ms = poll_interval_ms;
+  parser_thread_config_.stop_timeout_ms = stop_timeout_ms;
+#if __has_include(<mbed.h>)
+  if (parser_thread_running_) {
+    return true;
+  }
+  if (transport_ == nullptr) {
+    return false;
+  }
+  if (state_mutex_ == nullptr) {
+    state_mutex_ = new mbed::rtos::Mutex();
+  }
+  if (parser_thread_flags_ == nullptr) {
+    parser_thread_flags_ = new mbed::rtos::EventFlags();
+  }
+  if (parser_thread_stopped_ == nullptr) {
+    parser_thread_stopped_ = new mbed::rtos::Semaphore(0, 1);
+  }
+  if (parser_thread_ == nullptr) {
+    parser_thread_ = new mbed::rtos::Thread(osPriorityNormal, 2048, nullptr,
+                                            "mubus_parser");
+  }
+  if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
+      parser_thread_stopped_ == nullptr || parser_thread_ == nullptr) {
+    return false;
+  }
+
+  parser_thread_running_ = true;
+  parser_thread_->start(mbed::callback(this, &MuBusNode::parserThreadLoop));
+  return true;
+#else
+  (void)poll_interval_ms;
+  (void)stop_timeout_ms;
+  return false;
+#endif
+}
+
+bool MuBusNode::stopParserThread() {
+#if __has_include(<mbed.h>)
+  if (!parser_thread_running_) {
+    return true;
+  }
+  parser_thread_running_ = false;
+  if (parser_thread_flags_ != nullptr) {
+    parser_thread_flags_->set(0x1);
+  }
+  if (parser_thread_stopped_ != nullptr) {
+    if (!parser_thread_stopped_->try_acquire_for(
+            std::chrono::milliseconds(parser_thread_config_.stop_timeout_ms))) {
+      return false;
+    }
+  }
+  if (parser_thread_ != nullptr) {
+    parser_thread_->join();
+    delete parser_thread_;
+    parser_thread_ = nullptr;
+  }
+  return true;
+#else
+  return true;
+#endif
+}
+
+#if __has_include(<mbed.h>)
+void MuBusNode::parserThreadLoop() {
+  while (parser_thread_running_) {
+    poll();
+    if (parser_thread_flags_ == nullptr) {
+      mbed::ThisThread::sleep_for(
+          std::chrono::milliseconds(parser_thread_config_.poll_interval_ms));
+      continue;
+    }
+    parser_thread_flags_->wait_any_for(
+        0x1, std::chrono::milliseconds(parser_thread_config_.poll_interval_ms));
+  }
+
+  if (parser_thread_stopped_ != nullptr) {
+    parser_thread_stopped_->release();
+  }
+}
+#endif
+
 bool MuBusNode::available() {
   poll();
-  if (rxQueueEnabled()) {
-    return rx_count_ > 0;
-  }
-  return has_pending_frame_;
+  lockState();
+  const bool has_data = rxQueueEnabled() ? (rx_count_ > 0) : has_pending_frame_;
+  unlockState();
+  return has_data;
 }
 
 bool MuBusNode::receive(Frame &frame) {
   poll();
+  lockState();
 
   if (rxQueueEnabled()) {
-    return dequeueRxFrame(frame);
+    const bool ok = dequeueRxFrame(frame);
+    unlockState();
+    return ok;
   }
 
   if (!has_pending_frame_) {
+    unlockState();
     return false;
   }
 
   frame = pending_frame_;
   has_pending_frame_ = false;
+  unlockState();
   return true;
 }
 
-void MuBusNode::onFrame(FrameCallback callback) { frame_callback_ = callback; }
+void MuBusNode::onFrame(FrameCallback callback) {
+  lockState();
+  frame_callback_ = callback;
+  unlockState();
+}
 
-MuBusNode::NodeStatus MuBusNode::getStatus() const { return status_; }
+MuBusNode::NodeStatus MuBusNode::getStatus() const {
+  return status_;
+}
 
 bool MuBusNode::send(uint8_t *buf, uint16_t len, uint8_t recv_addr) {
   return send(recv_addr, buf, len);

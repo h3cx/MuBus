@@ -14,6 +14,14 @@ using String = std::string;
 class HardwareSerial;
 namespace mbed {
 class BufferedSerial;
+#if __has_include(<mbed.h>)
+namespace rtos {
+class Thread;
+class Mutex;
+class EventFlags;
+class Semaphore;
+} // namespace rtos
+#endif
 }
 
 namespace MuBus {
@@ -149,6 +157,21 @@ private:
   uint8_t tx_tail_ = 0;
   uint8_t tx_count_ = 0;
 
+  struct ParserThreadConfig {
+    uint32_t poll_interval_ms = 1;
+    uint32_t stop_timeout_ms = 100;
+  };
+
+  ParserThreadConfig parser_thread_config_{};
+  bool parser_thread_running_ = false;
+
+#if __has_include(<mbed.h>)
+  mbed::rtos::Thread *parser_thread_ = nullptr;
+  mbed::rtos::Mutex *state_mutex_ = nullptr;
+  mbed::rtos::EventFlags *parser_thread_flags_ = nullptr;
+  mbed::rtos::Semaphore *parser_thread_stopped_ = nullptr;
+#endif
+
 public:
   struct Frame {
     uint8_t src = 0x00;
@@ -180,6 +203,12 @@ private:
   void applyConfig(const MuBusConfig &config);
   bool rxQueueEnabled() const;
   bool txQueueEnabled() const;
+  void pollCore();
+  void lockState();
+  void unlockState();
+#if __has_include(<mbed.h>)
+  void parserThreadLoop();
+#endif
 
 public:
   MuBusNode();
@@ -210,6 +239,10 @@ public:
   bool receive(Frame &frame);
   void onFrame(FrameCallback callback);
   void poll();
+  void tick();
+  bool startParserThread();
+  bool startParserThread(uint32_t poll_interval_ms, uint32_t stop_timeout_ms);
+  bool stopParserThread();
   NodeStatus getStatus() const;
 
   // Deprecated: use send(dst, data, len) instead.
