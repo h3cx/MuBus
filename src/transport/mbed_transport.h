@@ -2,7 +2,7 @@
 
 #include "../MuBus.h"
 
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_MBED_TRANSPORT
 #include <mbed.h>
 
 namespace MuBus {

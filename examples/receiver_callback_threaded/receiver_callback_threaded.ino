@@ -31,7 +31,7 @@ void setup() {
 
   node.onFrame(onFrame);
 
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   // Threaded parser mode on mbed RTOS targets.
   if (!node.startParserThread(1, 200)) {
     Serial.println("failed to start parser thread");
@@ -44,7 +44,7 @@ void setup() {
 }
 
 void loop() {
-#if !__has_include(<mbed.h>)
+#if !MUBUS_ENABLE_PARSER_THREAD
   // Cooperative fallback for non-RTOS targets.
   node.tick();
 #endif

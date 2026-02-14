@@ -3,13 +3,11 @@
   "version": "0.0.3",
   "description": "A lightweight, fast serial bus communication protocol",
   "keywords": "serial, bus",
-  "repository": 
-  {
+  "repository": {
     "type": "git",
     "url": "https://github.com/h3cx/MuBus.git"
   },
-  "authors":
-  [
+  "authors": [
     {
       "name": "Hector van der Aa",
       "email": "h3cx@h3cx.dev",
@@ -21,5 +19,10 @@
   "homepage": "https://github.com/h3cx/MuBus",
   "dependencies": {},
   "frameworks": "*",
-  "platforms": "*"
+  "platforms": "*",
+  "build": {
+    "flags": [
+      "-DMUBUS_ENABLE_PARSER_THREAD=MUBUS_HAS_MBED"
+    ]
+  }
 }

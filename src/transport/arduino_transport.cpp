@@ -2,7 +2,7 @@
 
 namespace MuBus {
 
-#if __has_include(<HardwareSerial.h>)
+#if MUBUS_ENABLE_ARDUINO_TRANSPORT
 ArduinoSerialTransport::ArduinoSerialTransport(arduino::HardwareSerial *port)
     : port_(port) {}
 

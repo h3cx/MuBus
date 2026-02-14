@@ -2,7 +2,7 @@
 
 namespace MuBus {
 
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_MBED_TRANSPORT
 MbedBufferedSerialTransport::MbedBufferedSerialTransport(
     mbed::BufferedSerial *port)
     : port_(port) {}

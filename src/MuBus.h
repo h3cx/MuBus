@@ -4,17 +4,51 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#ifndef MUBUS_HAS_ARDUINO
 #if __has_include(<Arduino.h>)
+#define MUBUS_HAS_ARDUINO 1
+#else
+#define MUBUS_HAS_ARDUINO 0
+#endif
+#endif
+
+#ifndef MUBUS_HAS_MBED
+#if __has_include(<mbed.h>)
+#define MUBUS_HAS_MBED 1
+#else
+#define MUBUS_HAS_MBED 0
+#endif
+#endif
+
+#ifndef MUBUS_ENABLE_PARSER_THREAD
+#define MUBUS_ENABLE_PARSER_THREAD MUBUS_HAS_MBED
+#endif
+
+
+#ifndef MUBUS_ENABLE_ARDUINO_TRANSPORT
+#define MUBUS_ENABLE_ARDUINO_TRANSPORT MUBUS_HAS_ARDUINO
+#endif
+
+#ifndef MUBUS_ENABLE_MBED_TRANSPORT
+#define MUBUS_ENABLE_MBED_TRANSPORT MUBUS_HAS_MBED
+#endif
+
+#if MUBUS_HAS_ARDUINO
 #include <Arduino.h>
 #else
 #include <string>
 using String = std::string;
 #endif
 
+namespace arduino {
 class HardwareSerial;
+}
+
 namespace mbed {
 class BufferedSerial;
-#if __has_include(<mbed.h>)
+}
+
+#if MUBUS_HAS_MBED
 namespace rtos {
 class Thread;
 class Mutex;
@@ -22,7 +56,6 @@ class EventFlags;
 class Semaphore;
 } // namespace rtos
 #endif
-}
 
 namespace MuBus {
 
@@ -189,7 +222,7 @@ private:
   bool parser_thread_running_ = false;
   uint32_t parser_last_byte_ms_ = 0;
 
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   rtos::Thread *parser_thread_ = nullptr;
   rtos::Mutex *state_mutex_ = nullptr;
   rtos::EventFlags *parser_thread_flags_ = nullptr;
@@ -236,7 +269,7 @@ private:
   void pollCore();
   void lockState();
   void unlockState();
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   void parserThreadLoop();
 #endif
 

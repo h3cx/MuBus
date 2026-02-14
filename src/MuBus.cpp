@@ -2,11 +2,11 @@
 
 #include <stdio.h>
 
-#if !__has_include(<Arduino.h>)
+#if !MUBUS_HAS_ARDUINO || MUBUS_ENABLE_PARSER_THREAD
 #include <chrono>
 #endif
 
-#if __has_include(<mbed.h>)
+#if MUBUS_HAS_MBED
 #include <mbed.h>
 #endif
 
@@ -14,7 +14,7 @@ namespace MuBus {
 
 namespace {
 uint32_t nowMs() {
-#if __has_include(<Arduino.h>)
+#if MUBUS_HAS_ARDUINO
   return millis();
 #else
   using namespace std::chrono;
@@ -89,7 +89,7 @@ MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr,
 }
 
 void MuBusNode::lockState() {
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   if (state_mutex_ != nullptr) {
     state_mutex_->lock();
   }
@@ -97,7 +97,7 @@ void MuBusNode::lockState() {
 }
 
 void MuBusNode::unlockState() {
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   if (state_mutex_ != nullptr) {
     state_mutex_->unlock();
   }
@@ -109,7 +109,7 @@ MuBusNode::~MuBusNode() {
   if (owns_transport_) {
     delete transport_;
   }
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
   delete state_mutex_;
   delete parser_thread_flags_;
   delete parser_thread_stopped_;
@@ -431,11 +431,21 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
                                   uint32_t stop_timeout_ms) {
   parser_thread_config_.poll_interval_ms = poll_interval_ms;
   parser_thread_config_.stop_timeout_ms = stop_timeout_ms;
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
+  if (state_mutex_ != nullptr) {
+    state_mutex_->lock();
+  }
+
   if (parser_thread_running_) {
+    if (state_mutex_ != nullptr) {
+      state_mutex_->unlock();
+    }
     return true;
   }
   if (transport_ == nullptr) {
+    if (state_mutex_ != nullptr) {
+      state_mutex_->unlock();
+    }
     return false;
   }
   if (state_mutex_ == nullptr) {
@@ -449,15 +459,19 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
   }
   if (parser_thread_ == nullptr) {
     parser_thread_ = new rtos::Thread(osPriorityNormal, 2048, nullptr,
-                                            "mubus_parser");
+                                      "mubus_parser");
   }
   if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
       parser_thread_stopped_ == nullptr || parser_thread_ == nullptr) {
+    if (state_mutex_ != nullptr) {
+      state_mutex_->unlock();
+    }
     return false;
   }
 
   parser_thread_running_ = true;
   parser_thread_->start(mbed::callback(this, &MuBusNode::parserThreadLoop));
+  state_mutex_->unlock();
   return true;
 #else
   (void)poll_interval_ms;
@@ -467,24 +481,45 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
 }
 
 bool MuBusNode::stopParserThread() {
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
+  rtos::Thread *thread = nullptr;
+
+  if (state_mutex_ != nullptr) {
+    state_mutex_->lock();
+  }
+
   if (!parser_thread_running_) {
+    thread = parser_thread_;
+    parser_thread_ = nullptr;
+    if (state_mutex_ != nullptr) {
+      state_mutex_->unlock();
+    }
+    if (thread != nullptr) {
+      thread->join();
+      delete thread;
+    }
     return true;
   }
+
   parser_thread_running_ = false;
+  thread = parser_thread_;
+  parser_thread_ = nullptr;
+
+  if (state_mutex_ != nullptr) {
+    state_mutex_->unlock();
+  }
+
   if (parser_thread_flags_ != nullptr) {
     parser_thread_flags_->set(0x1);
   }
-  if (parser_thread_stopped_ != nullptr) {
-    if (!parser_thread_stopped_->try_acquire_for(
-            std::chrono::milliseconds(parser_thread_config_.stop_timeout_ms))) {
-      return false;
-    }
+  if (parser_thread_stopped_ != nullptr &&
+      !parser_thread_stopped_->try_acquire_for(
+          std::chrono::milliseconds(parser_thread_config_.stop_timeout_ms))) {
+    return false;
   }
-  if (parser_thread_ != nullptr) {
-    parser_thread_->join();
-    delete parser_thread_;
-    parser_thread_ = nullptr;
+  if (thread != nullptr) {
+    thread->join();
+    delete thread;
   }
   return true;
 #else
@@ -492,7 +527,7 @@ bool MuBusNode::stopParserThread() {
 #endif
 }
 
-#if __has_include(<mbed.h>)
+#if MUBUS_ENABLE_PARSER_THREAD
 void MuBusNode::parserThreadLoop() {
   while (parser_thread_running_) {
     poll();
@@ -712,6 +747,15 @@ bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
     return false;
 
   case ParserState::Payload:
+    if (parser_.payload_index >= parser_.len ||
+        parser_.payload_index >= config_.max_payload_size) {
+      diagnostics_.length_overflow++;
+      diagnostics_.drop_count++;
+      status_.dropped_frame_count++;
+      resetParser();
+      return false;
+    }
+
     parser_payload_[parser_.payload_index++] = byte;
     if (parser_.payload_index < parser_.len) {
       return false;
