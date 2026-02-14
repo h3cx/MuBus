@@ -7,6 +7,9 @@ A high performance, low overhead serial communication protocol
 > [!IMPORTANT]
 > μBus currently supports Arduino-compatible targets with `HardwareSerial`, and mbed targets with `mbed::BufferedSerial`.
 
+# Documentation
+- Full user/developer manual: [`docs/README.md`](docs/README.md)
+
 # Installation
 μBus is currently aimed at PlatformIO-based workflows.
 
