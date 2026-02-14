@@ -62,6 +62,43 @@ uint16_t getPayloadSize();
 ```
 
 
+
+## Optional parser worker mode
+`MuBusNode` can now run parsing in either:
+- a dedicated worker thread (mbed targets with RTOS), or
+- a cooperative single-threaded path via `tick()` (Arduino and minimal targets).
+
+### Frame callback
+Register a callback that fires whenever a complete frame is accepted:
+```cpp
+void onFrameReady(const MuBus::MuBusNode::Frame &frame) {
+  // frame.payload points to valid bytes for frame.len
+}
+
+node.onFrame(onFrameReady);
+```
+
+### mbed RTOS worker thread
+```cpp
+// uses previously configured values
+node.startParserThread();
+
+// or configure poll interval + stop timeout (ms)
+node.startParserThread(2, 200);
+
+// stop and join worker
+node.stopParserThread();
+```
+
+### Arduino / non-RTOS cooperative parser
+Call `tick()` from your main loop to use the same parser core without threading:
+```cpp
+void loop() {
+  node.tick();
+  // application work
+}
+```
+
 ## Memory Footprint
 Packet RX/TX storage is now embedded in `MuBusNode` as fixed-size arrays (no per-frame dynamic allocation in the hot path).
 
