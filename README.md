@@ -64,6 +64,18 @@ uint16_t getPayloadSize();
 
 
 
+## Example sketches
+Sketches are available under `examples/`:
+
+- `examples/sender_basic/sender_basic.ino`: simple periodic sender.
+- `examples/receiver_callback_threaded/receiver_callback_threaded.ino`: callback receiver with parser worker thread on mbed RTOS targets (falls back to `tick()` elsewhere).
+- `examples/receiver_polling/receiver_polling.ino`: polling receiver using `available()/receive()`.
+- `examples/receiver_migration_parse_getpayload/receiver_migration_parse_getpayload.ino`: migration from deprecated `parse()+getPayload()` APIs to `receive(Frame&)`.
+
+> [!IMPORTANT]
+> When the MuBus parser is active, do not read from the UART directly (`Serial.read()`, `Serial.peek()`, etc.).
+> Read incoming frames only through MuBus internals (`onFrame`, `available()/receive()`, or deprecated wrappers).
+
 ## Address Semantics
 Address fields are one byte (`uint8_t`) and use the following meanings:
 
