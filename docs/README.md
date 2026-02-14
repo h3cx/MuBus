@@ -130,6 +130,7 @@ Decoded:
 - `uint16_t max_payload_size = kMaxPayload` (`506`)
 - `CrcMode crc_mode = CrcMode::None`
 - `uint32_t parser_timeout_ms = 0`
+- `uint32_t parser_thread_stack_bytes = 4096`
 - `DestinationFilterMode destination_filter_mode = DestinationFilterMode::AddressedOrBroadcast`
 
 #### `class MuBusNode::Frame`
@@ -292,6 +293,7 @@ Resets diagnostics counters to zero.
 | `max_payload_size` | `506` | clamped to `0..506` | Larger max allows bigger frames but parser/TX buffers remain sized for max compile-time payload. |
 | `crc_mode` | `None` | `None`, `Crc8`, `Crc16` | CRC adds integrity checks and bytes-on-wire + compute cost. |
 | `parser_timeout_ms` | `0` | any `uint32_t` (`0` disables timeout) | Non-zero drops stalled partial frames; too small may reject valid slow streams. |
+| `parser_thread_stack_bytes` | `4096` | any `uint32_t`; very small values risk parser-thread instability | mbed parser-thread stack reservation. Use `>= 3072` for tiny callbacks; prefer `4096-8192` for callback-heavy/diagnostic workloads. |
 | `destination_filter_mode` | `AddressedOrBroadcast` | enum options listed above | Tight filtering reduces app-level noise; promiscuous captures all. |
 
 ### Recommended presets
@@ -387,6 +389,7 @@ MuBus code uses `MuBus::` namespace and expects RTOS symbols in `rtos::` (e.g., 
 | `drop_count` + `rx_queue_full` | consumer too slow for RX rate | RX queue depth, callback latency | Increase `rx_queue_depth`, reduce callback work, poll faster. |
 | `drop_count` + `tx_queue_full` | TX producer outruns transport | TX mode/depth, transport throughput | Increase `tx_queue_depth`, reduce send burst, lower payload size. |
 | `timeout_count` rising | parser timeout too short or stream stalls | `parser_timeout_ms`, poll cadence | Raise/disable timeout (`0`) or improve scheduling/transport readiness. |
+| Hard fault / random resets in threaded callback mode | parser thread stack exhaustion | `parser_thread_stack_bytes`, callback depth, temporary buffers | Increase parser thread stack size; start near `4096` and scale toward `8192` when callbacks/diagnostics are heavy. |
 
 ### 6.4 Build/link integration troubleshooting
 - **Undefined `rtos::...` symbols**: ensure mbed target/build flags align with `MUBUS_HAS_MBED` and `MUBUS_ENABLE_PARSER_THREAD` expectations.
@@ -524,6 +527,7 @@ if (node.receive(f)) {
 - In cooperative mode, parser latency equals how often `tick()`/`poll()` is called.
 - In threaded mode, latency is tied to parser thread poll interval.
 - `parser_timeout_ms` should exceed worst-case inter-byte gap expected on your link.
+- `parser_thread_stack_bytes` should be sized for callback complexity: `>= 3072` for tiny callbacks, `4096-8192` recommended when callbacks and diagnostics formatting are active.
   - Too low: false frame drops/timeouts.
   - Too high: slower recovery from broken/incomplete frames.
 

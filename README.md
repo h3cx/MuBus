@@ -158,6 +158,7 @@ Use `MuBusConfig` to pick queueing and parser execution model.
 - Approximate slot footprint: `kHeaderSize + max_payload + metadata` = `6 + 506 + 4 = 516` bytes per queue entry at defaults.
 - Increasing queue depths increases copy/queue bookkeeping work, but reduces dropped frames when producers outrun consumers.
 - Threaded parser mode moves parse work off the main loop (mbed RTOS), while `tick()` keeps scheduling explicit and deterministic on bare-metal loops.
+- `parser_thread_stack_bytes` config controls mbed parser-thread stack reservation (default `4096`). Use `>= 3072` for tiny callbacks; prefer `4096-8192` when callback logic or diagnostics formatting is non-trivial.
 
 # Error handling and diagnostics
 ## Return-value checks
@@ -191,6 +192,7 @@ Interpretation tips:
 - `crc_fail`: corruption or CRC mode mismatch between peers.
 - `timeout_count`: partial frame stalled beyond `parser_timeout_ms`.
 - `drop_count`: queue pressure (RX/TX full) or rejected enqueue path.
+- Hard faults or random resets in threaded callback mode commonly indicate parser-thread stack exhaustion; increase `parser_thread_stack_bytes`.
 
 # Migration notes (legacy API → current API)
 Legacy wrappers are still present but deprecated:

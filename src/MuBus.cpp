@@ -464,8 +464,9 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
     parser_thread_stopped_ = new rtos::Semaphore(0, 1);
   }
   if (parser_thread_ == nullptr) {
-    parser_thread_ = new rtos::Thread(osPriorityNormal, 2048, nullptr,
-                                      "mubus_parser");
+    parser_thread_ = new rtos::Thread(
+        osPriorityNormal, config_.parser_thread_stack_bytes, nullptr,
+        "mubus_parser");
   }
   if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
       parser_thread_stopped_ == nullptr || parser_thread_ == nullptr) {
