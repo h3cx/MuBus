@@ -90,7 +90,7 @@ MuBus keeps RTOS symbols in code as `rtos::Thread`, `rtos::Mutex`, `rtos::EventF
 When mbed support is enabled (`MUBUS_HAS_MBED=1`), MuBus provides the required forward declarations/bridge so `rtos::...` names resolve consistently.
 
 Primary compile-time switches:
-- `MUBUS_ENABLE_PARSER_THREAD` (default: `MUBUS_HAS_MBED`)
+- `MUBUS_ENABLE_PARSER_THREAD` (default: `MUBUS_HAS_MBED || MUBUS_HAS_FREERTOS`)
 - `MUBUS_ENABLE_ARDUINO_TRANSPORT` (default: `MUBUS_HAS_ARDUINO`)
 - `MUBUS_ENABLE_MBED_TRANSPORT` (default: `MUBUS_HAS_MBED`)
 
@@ -163,8 +163,8 @@ Use `MuBusConfig` to pick queueing and parser execution model.
 - **Ring RX and/or queued TX** increases RAM roughly linearly with queue depth but smooths bursts and reduces producer blocking.
 - Approximate slot footprint: `kHeaderSize + max_payload + metadata` = `6 + 506 + 4 = 516` bytes per queue entry at defaults.
 - Increasing queue depths increases copy/queue bookkeeping work, but reduces dropped frames when producers outrun consumers.
-- Threaded parser mode moves parse work off the main loop (mbed RTOS), while `tick()` keeps scheduling explicit and deterministic on bare-metal loops.
-- `parser_thread_stack_bytes` config controls mbed parser-thread stack reservation (default `4096`). Use `>= 3072` for tiny callbacks; prefer `4096-8192` when callback logic or diagnostics formatting is non-trivial.
+- Threaded parser mode moves parse work off the main loop (mbed RTOS or FreeRTOS), while `tick()` keeps scheduling explicit and deterministic on bare-metal loops.
+- `parser_thread_stack_bytes` config controls parser-thread stack reservation (default `4096` bytes). On FreeRTOS this value is converted to task stack words for `xTaskCreate`.
 
 # Error handling and diagnostics
 ## Return-value checks
