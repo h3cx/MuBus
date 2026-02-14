@@ -130,6 +130,31 @@ Frame layout is defined byte-for-byte as:
 - `DST[1]`: destination node address (`0x00` for broadcast)
 - `LEN[2]`: payload length in **little-endian** byte order (`LEN[0]` = low byte, `LEN[1]` = high byte)
 - `PAYLOAD[LEN]`: payload bytes
-- optional `CRC[1|2]`: present only when CRC is enabled by configuration
+- optional `CRC[1|2]`: present only when `MuBusConfig::crc_mode` is `Crc8` or `Crc16`
 
-Total frame size without CRC is `6 + LEN` bytes.
+Total frame size is `6 + LEN + crc_bytes`, where `crc_bytes` is:
+- `0` for `CrcMode::None`
+- `1` for `CrcMode::Crc8`
+- `2` for `CrcMode::Crc16`
+
+## Diagnostics
+Use parser diagnostics for runtime telemetry and debugging:
+
+```cpp
+MuBus::MuBusConfig config;
+config.crc_mode = MuBus::CrcMode::Crc16;
+config.parser_timeout_ms = 20;
+
+MuBus::MuBusNode node(&Serial1, 0x01, config);
+auto diag = node.getDiagnostics();
+// diag.sync_errors
+// diag.destination_mismatch
+// diag.length_overflow
+// diag.crc_fail
+// diag.timeout_count
+// diag.drop_count
+
+node.resetDiagnostics();
+```
+
+RX frames now have CRC verification before entering the queue/callback path when CRC is configured.
