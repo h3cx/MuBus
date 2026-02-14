@@ -46,6 +46,22 @@ private:
   MuPacketHeader *out_packet_;
   MuPacketHeader *in_packet_ = new MuPacketHeader();
   uint8_t *in_buf_ = (uint8_t *)malloc(kMaxPayload);
+  bool has_pending_frame_ = false;
+
+public:
+  struct Frame {
+    uint8_t src = 0x00;
+    uint8_t dst = 0x00;
+    uint16_t len = 0x0000;
+    uint8_t *payload = nullptr;
+  };
+
+  using FrameCallback = void (*)(const Frame &frame);
+
+private:
+  Frame pending_frame_{};
+  FrameCallback frame_callback_ = nullptr;
+  bool readFrame(Frame &frame);
 
 public:
   MuBusNode();
@@ -57,10 +73,29 @@ public:
   MuBusNode(HardwareSerial *port);
   MuBusNode(HardwareSerial *port, uint8_t addr);
   #endif
+
+  #ifdef MUBUS_MBED
+  bool begin(mbed::BufferedSerial *port, uint8_t addr);
+  #else
+  bool begin(HardwareSerial *port, uint8_t addr);
+  #endif
+  void stop();
+
   void bindAddr(uint8_t addr);
-  bool broadcast(uint8_t *buf, uint16_t len);
+  bool send(uint8_t dst, const uint8_t *data, uint16_t len);
+  bool broadcast(const uint8_t *data, uint16_t len);
+
+  bool available();
+  bool receive(Frame &frame);
+  void onFrame(FrameCallback callback);
+
+  // Deprecated: use send(dst, data, len) instead.
   bool send(uint8_t *buf, uint16_t len, uint8_t recv_addr);
+  // Deprecated: use broadcast(data, len) with const payload.
+  bool broadcast(uint8_t *buf, uint16_t len);
+  // Deprecated: use receive(Frame&) or onFrame(...) instead.
   bool parse();
+  // Deprecated: use receive(Frame&) and Frame::payload instead.
   uint8_t *getPayload();
   uint16_t getPayloadSize();
   String formatHeader();

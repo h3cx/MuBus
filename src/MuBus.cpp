@@ -54,36 +54,49 @@ MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr)
     : port_(port), out_packet_(new MuPacketHeader(addr)) {}
 #endif
 
-bool MuBusNode::broadcast(uint8_t *buf, uint16_t len) {
+#ifdef MUBUS_MBED
+bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
+  port_ = port;
+  bindAddr(addr);
+  has_pending_frame_ = false;
+  return port_ != nullptr;
+}
+#else
+bool MuBusNode::begin(HardwareSerial *port, uint8_t addr) {
+  port_ = port;
+  bindAddr(addr);
+  has_pending_frame_ = false;
+  return port_ != nullptr;
+}
+#endif
+
+void MuBusNode::stop() {
+  port_ = nullptr;
+  has_pending_frame_ = false;
+  frame_callback_ = nullptr;
+}
+
+bool MuBusNode::send(uint8_t dst, const uint8_t *data, uint16_t len) {
+  if (port_ == nullptr) {
+    return false;
+  }
   if (len > kMaxPayload) {
     return false;
   }
-  if (len > 0 && buf == nullptr) {
+  if (len > 0 && data == nullptr) {
     return false;
   }
-  out_packet_->bindDest(0x00);
+  out_packet_->bindDest(dst);
   out_packet_->setSize(len);
   port_->write(out_packet_->serialize(), kHeaderSize);
   if (len > 0) {
-    port_->write(buf, len);
+    port_->write(data, len);
   }
   return true;
 }
 
-bool MuBusNode::send(uint8_t *buf, uint16_t len, uint8_t recv_addr) {
-  if (len > kMaxPayload) {
-    return false;
-  }
-  if (len > 0 && buf == nullptr) {
-    return false;
-  }
-  out_packet_->bindDest(recv_addr);
-  out_packet_->setSize(len);
-  port_->write(out_packet_->serialize(), kHeaderSize);
-  if (len > 0) {
-    port_->write(buf, len);
-  }
-  return true;
+bool MuBusNode::broadcast(const uint8_t *data, uint16_t len) {
+  return send(0x00, data, len);
 }
 
 void MuBusNode::bindAddr(uint8_t addr) { out_packet_->bindSource(addr); }
@@ -97,8 +110,58 @@ String MuBusNode::formatHeader() {
   return String(msg_buf);
 }
 
-#ifdef MUBUS_MBED
+bool MuBusNode::available() {
+  if (has_pending_frame_) {
+    return true;
+  }
+
+  Frame frame;
+  if (!readFrame(frame)) {
+    return false;
+  }
+
+  pending_frame_ = frame;
+  has_pending_frame_ = true;
+  if (frame_callback_ != nullptr) {
+    frame_callback_(pending_frame_);
+  }
+  return true;
+}
+
+bool MuBusNode::receive(Frame &frame) {
+  if (!has_pending_frame_ && !available()) {
+    return false;
+  }
+
+  frame = pending_frame_;
+  has_pending_frame_ = false;
+  return true;
+}
+
+void MuBusNode::onFrame(FrameCallback callback) { frame_callback_ = callback; }
+
+bool MuBusNode::send(uint8_t *buf, uint16_t len, uint8_t recv_addr) {
+  return send(recv_addr, buf, len);
+}
+
+bool MuBusNode::broadcast(uint8_t *buf, uint16_t len) {
+  return broadcast(static_cast<const uint8_t *>(buf), len);
+}
+
 bool MuBusNode::parse() {
+  Frame frame;
+  if (!receive(frame)) {
+    return false;
+  }
+  return true;
+}
+
+bool MuBusNode::readFrame(Frame &frame) {
+  if (port_ == nullptr) {
+    return false;
+  }
+
+#ifdef MUBUS_MBED
   if (port_->readable()) {
     uint8_t header[kHeaderSize];
     port_->read(header, 1);
@@ -138,15 +201,18 @@ bool MuBusNode::parse() {
         rtos::ThisThread::sleep_for(2);
       }
     }
+
+    frame.src = in_packet_->getSource();
+    frame.dst = in_packet_->getDest();
+    frame.len = in_packet_->getSize();
+    frame.payload = in_buf_;
     return true;
   } else {
     rtos::ThisThread::sleep_for(5);
   }
 
   return false;
-}
 #else
-bool MuBusNode::parse() {
   if (port_->available()) {
     uint8_t header[kHeaderSize];
     header[0] = port_->read();
@@ -189,9 +255,15 @@ bool MuBusNode::parse() {
         delay(2);
       }
     }
+
+    frame.src = in_packet_->getSource();
+    frame.dst = in_packet_->getDest();
+    frame.len = in_packet_->getSize();
+    frame.payload = in_buf_;
     return true;
   }
   return false;
-}
 #endif
+}
+
 } // namespace MuBus
