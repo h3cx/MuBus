@@ -38,6 +38,25 @@ public:
 
 class MuBusNode {
 private:
+  enum class ParserState : uint8_t {
+    Sync0,
+    Sync1,
+    Src,
+    Dst,
+    Len0,
+    Len1,
+    Payload,
+    Crc,
+  };
+
+  struct ParserContext {
+    ParserState state = ParserState::Sync0;
+    uint8_t src = 0x00;
+    uint8_t dst = 0x00;
+    uint16_t len = 0x0000;
+    uint16_t payload_index = 0x0000;
+  };
+
   #ifdef MUBUS_MBED
   mbed::BufferedSerial *port_ = nullptr;
   #else
@@ -47,6 +66,7 @@ private:
   MuPacketHeader *in_packet_ = new MuPacketHeader();
   uint8_t *in_buf_ = (uint8_t *)malloc(kMaxPayload);
   bool has_pending_frame_ = false;
+  ParserContext parser_{};
 
 public:
   struct Frame {
@@ -62,6 +82,9 @@ private:
   Frame pending_frame_{};
   FrameCallback frame_callback_ = nullptr;
   bool readFrame(Frame &frame);
+  void resetParser();
+  bool readTransportByte(uint8_t &byte);
+  bool parseByte(uint8_t byte, Frame &frame);
 
 public:
   MuBusNode();
