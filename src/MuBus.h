@@ -20,8 +20,17 @@
 #endif
 #endif
 
+#ifndef MUBUS_HAS_FREERTOS
+#if __has_include(<freertos/FreeRTOS.h>) && __has_include(<freertos/task.h>) && \
+    __has_include(<freertos/semphr.h>) && __has_include(<freertos/event_groups.h>)
+#define MUBUS_HAS_FREERTOS 1
+#else
+#define MUBUS_HAS_FREERTOS 0
+#endif
+#endif
+
 #ifndef MUBUS_ENABLE_PARSER_THREAD
-#define MUBUS_ENABLE_PARSER_THREAD MUBUS_HAS_MBED
+#define MUBUS_ENABLE_PARSER_THREAD (MUBUS_HAS_MBED || MUBUS_HAS_FREERTOS)
 #endif
 
 
@@ -55,6 +64,13 @@ class Mutex;
 class EventFlags;
 class Semaphore;
 } // namespace rtos
+#endif
+
+#if MUBUS_HAS_FREERTOS
+#include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 #endif
 
 namespace MuBus {
@@ -225,10 +241,17 @@ private:
   uint32_t parser_last_byte_ms_ = 0;
 
 #if MUBUS_ENABLE_PARSER_THREAD
+#if MUBUS_HAS_MBED
   rtos::Thread *parser_thread_ = nullptr;
   rtos::Mutex *state_mutex_ = nullptr;
   rtos::EventFlags *parser_thread_flags_ = nullptr;
   rtos::Semaphore *parser_thread_stopped_ = nullptr;
+#elif MUBUS_HAS_FREERTOS
+  TaskHandle_t parser_thread_ = nullptr;
+  SemaphoreHandle_t state_mutex_ = nullptr;
+  EventGroupHandle_t parser_thread_flags_ = nullptr;
+  SemaphoreHandle_t parser_thread_stopped_ = nullptr;
+#endif
 #endif
 
 public:
@@ -273,6 +296,9 @@ private:
   void unlockState();
 #if MUBUS_ENABLE_PARSER_THREAD
   void parserThreadLoop();
+#if MUBUS_HAS_FREERTOS
+  static void parserThreadEntry(void *arg);
+#endif
 #endif
 
 public:
