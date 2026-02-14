@@ -6,14 +6,22 @@
 #endif // MUBUS_MBED
 namespace MuBus {
 
+static constexpr uint8_t kSync0 = 0xD3;
+static constexpr uint8_t kSync1 = 0x91;
+static constexpr uint8_t kHeaderSize = 6;
+static constexpr uint16_t kMaxPayload = 506;
+
+class MuPacketHeader;
+
+void encodeHeaderBytewise(uint8_t *out, uint8_t src, uint8_t dst, uint16_t len);
+bool decodeHeaderBytewise(const uint8_t *in, MuPacketHeader &header);
+
 class MuPacketHeader {
 private:
-  uint16_t header_ = 0xD391;
   uint8_t source_addr_ = 0x00;
   uint8_t dest_addr_ = 0x00;
   uint16_t body_size_ = 0x0000;
-  uint8_t s_head_[sizeof(header_) + sizeof(source_addr_) + sizeof(dest_addr_) +
-                  sizeof(body_size_)];
+  uint8_t s_head_[kHeaderSize];
 
 public:
   MuPacketHeader() = default;
@@ -37,7 +45,7 @@ private:
   #endif
   MuPacketHeader *out_packet_;
   MuPacketHeader *in_packet_ = new MuPacketHeader();
-  uint8_t *in_buf_ = (uint8_t *)malloc(506);
+  uint8_t *in_buf_ = (uint8_t *)malloc(kMaxPayload);
 
 public:
   MuBusNode();
