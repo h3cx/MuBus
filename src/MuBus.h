@@ -1,9 +1,21 @@
-#define MUBUS_MBED
-#include "Arduino.h"
-#include "HardwareSerial.h"
-#ifdef MUBUS_MBED
-#include "mbed.h"
-#endif // MUBUS_MBED
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#if __has_include(<Arduino.h>)
+#include <Arduino.h>
+#else
+#include <string>
+using String = std::string;
+#endif
+
+class HardwareSerial;
+namespace mbed {
+class BufferedSerial;
+}
+
 namespace MuBus {
 
 static constexpr uint8_t kSync0 = 0xD3;
@@ -12,9 +24,17 @@ static constexpr uint8_t kHeaderSize = 6;
 static constexpr uint16_t kMaxPayload = 506;
 
 class MuPacketHeader;
+class MuTransport;
 
 void encodeHeaderBytewise(uint8_t *out, uint8_t src, uint8_t dst, uint16_t len);
 bool decodeHeaderBytewise(const uint8_t *in, MuPacketHeader &header);
+
+class MuTransport {
+public:
+  virtual ~MuTransport() = default;
+  virtual bool write(const uint8_t *data, size_t len) = 0;
+  virtual bool readByte(uint8_t &byte) = 0;
+};
 
 class MuPacketHeader {
 private:
@@ -38,7 +58,6 @@ public:
 
 class MuBusNode {
 private:
-  static constexpr uint32_t kTransportReadTimeoutMs = 5;
   enum class ParserState : uint8_t {
     Sync0,
     Sync1,
@@ -58,11 +77,8 @@ private:
     uint16_t payload_index = 0x0000;
   };
 
-  #ifdef MUBUS_MBED
-  mbed::BufferedSerial *port_ = nullptr;
-  #else
-  HardwareSerial *port_ = nullptr;
-  #endif
+  MuTransport *transport_ = nullptr;
+  bool owns_transport_ = false;
   MuPacketHeader *out_packet_;
   MuPacketHeader *in_packet_ = new MuPacketHeader();
   uint8_t *in_buf_ = (uint8_t *)malloc(kMaxPayload);
@@ -84,29 +100,24 @@ private:
   FrameCallback frame_callback_ = nullptr;
   bool readFrame(Frame &frame);
   void resetParser();
-#ifdef MUBUS_MBED
-  bool readTransportBytes(uint8_t *buffer, size_t len, uint32_t timeout_ms,
-                          size_t &bytes_read);
-#endif
   bool readTransportByte(uint8_t &byte);
   bool parseByte(uint8_t byte, Frame &frame);
+  bool assignTransport(MuTransport *transport, bool take_ownership, uint8_t addr);
 
 public:
   MuBusNode();
   MuBusNode(uint8_t addr);
-  #ifdef MUBUS_MBED
-  MuBusNode(mbed::BufferedSerial *port);
-  MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
-  #else
+  MuBusNode(MuTransport *transport);
+  MuBusNode(MuTransport *transport, uint8_t addr);
   MuBusNode(HardwareSerial *port);
   MuBusNode(HardwareSerial *port, uint8_t addr);
-  #endif
+  MuBusNode(mbed::BufferedSerial *port);
+  MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
+  ~MuBusNode();
 
-  #ifdef MUBUS_MBED
-  bool begin(mbed::BufferedSerial *port, uint8_t addr);
-  #else
+  bool begin(MuTransport *transport, uint8_t addr);
   bool begin(HardwareSerial *port, uint8_t addr);
-  #endif
+  bool begin(mbed::BufferedSerial *port, uint8_t addr);
   void stop();
 
   void bindAddr(uint8_t addr);
