@@ -42,25 +42,29 @@ uint8_t *MuPacketHeader::serialize() {
   return s_head_;
 }
 
-MuBusNode::MuBusNode() : out_packet_(new MuPacketHeader()) { applyConfig(config_); }
-MuBusNode::MuBusNode(uint8_t addr) : out_packet_(new MuPacketHeader(addr)) {
+MuBusNode::MuBusNode() { applyConfig(config_); }
+MuBusNode::MuBusNode(uint8_t addr) {
+  out_packet_.bindSource(addr);
   applyConfig(config_);
 }
 MuBusNode::MuBusNode(uint8_t addr, const MuBusConfig &config)
-    : config_(config), out_packet_(new MuPacketHeader(addr)) {
+    : config_(config) {
+  out_packet_.bindSource(addr);
   applyConfig(config_);
 }
 MuBusNode::MuBusNode(MuTransport *transport)
-    : transport_(transport), out_packet_(new MuPacketHeader) {
+    : transport_(transport) {
   applyConfig(config_);
 }
 MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr)
-    : transport_(transport), out_packet_(new MuPacketHeader(addr)) {
+    : transport_(transport) {
+  out_packet_.bindSource(addr);
   applyConfig(config_);
 }
 MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr,
                      const MuBusConfig &config)
-    : transport_(transport), config_(config), out_packet_(new MuPacketHeader(addr)) {
+    : transport_(transport), config_(config) {
+  out_packet_.bindSource(addr);
   applyConfig(config_);
 }
 
@@ -68,8 +72,6 @@ MuBusNode::~MuBusNode() {
   if (owns_transport_) {
     delete transport_;
   }
-  delete in_packet_;
-  delete out_packet_;
 }
 
 void MuBusNode::applyConfig(const MuBusConfig &config) {
@@ -158,9 +160,9 @@ bool MuBusNode::writeFrameNow(uint8_t dst, const uint8_t *data, uint16_t len) {
     return false;
   }
 
-  out_packet_->bindDest(dst);
-  out_packet_->setSize(len);
-  if (!transport_->write(out_packet_->serialize(), kHeaderSize)) {
+  out_packet_.bindDest(dst);
+  out_packet_.setSize(len);
+  if (!transport_->write(out_packet_.serialize(), kHeaderSize)) {
     return false;
   }
   if (len > 0 && !transport_->write(data, len)) {
@@ -168,7 +170,7 @@ bool MuBusNode::writeFrameNow(uint8_t dst, const uint8_t *data, uint16_t len) {
   }
 
   if (config_.crc_enabled) {
-    const uint8_t crc = computeCrc(out_packet_->getSource(), dst, len, data);
+    const uint8_t crc = computeCrc(out_packet_.getSource(), dst, len, data);
     return transport_->write(&crc, 1);
   }
 
@@ -184,7 +186,7 @@ bool MuBusNode::enqueueTxFrame(uint8_t dst, const uint8_t *data, uint16_t len) {
   }
 
   FrameSlot &slot = tx_slots_[tx_tail_];
-  slot.src = out_packet_->getSource();
+  slot.src = out_packet_.getSource();
   slot.dst = dst;
   slot.len = len;
   for (uint16_t i = 0; i < len; ++i) {
@@ -227,7 +229,7 @@ bool MuBusNode::broadcast(const uint8_t *data, uint16_t len) {
   return send(0x00, data, len);
 }
 
-void MuBusNode::bindAddr(uint8_t addr) { out_packet_->bindSource(addr); }
+void MuBusNode::bindAddr(uint8_t addr) { out_packet_.bindSource(addr); }
 uint8_t *MuBusNode::getPayload() { return pending_frame_.payload; }
 uint16_t MuBusNode::getPayloadSize() { return pending_frame_.len; }
 String MuBusNode::formatHeader() {
@@ -365,12 +367,12 @@ bool MuBusNode::readTransportByte(uint8_t &byte) {
 }
 
 bool MuBusNode::finalizeParsedFrame(uint8_t crc_byte, Frame &frame) {
-  in_packet_->bindSource(parser_.src);
-  in_packet_->bindDest(parser_.dst);
-  in_packet_->setSize(parser_.len);
+  in_packet_.bindSource(parser_.src);
+  in_packet_.bindDest(parser_.dst);
+  in_packet_.setSize(parser_.len);
 
-  if (in_packet_->getDest() != out_packet_->getSource() &&
-      in_packet_->getDest() != 0x00) {
+  if (in_packet_.getDest() != out_packet_.getSource() &&
+      in_packet_.getDest() != 0x00) {
     return false;
   }
 
@@ -382,9 +384,9 @@ bool MuBusNode::finalizeParsedFrame(uint8_t crc_byte, Frame &frame) {
     }
   }
 
-  frame.src = in_packet_->getSource();
-  frame.dst = in_packet_->getDest();
-  frame.len = in_packet_->getSize();
+  frame.src = in_packet_.getSource();
+  frame.dst = in_packet_.getDest();
+  frame.len = in_packet_.getSize();
   frame.payload = parser_payload_;
   return true;
 }
