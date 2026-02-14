@@ -432,24 +432,30 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
   parser_thread_config_.poll_interval_ms = poll_interval_ms;
   parser_thread_config_.stop_timeout_ms = stop_timeout_ms;
 #if MUBUS_ENABLE_PARSER_THREAD
+  bool locked = false;
   if (state_mutex_ != nullptr) {
     state_mutex_->lock();
+    locked = true;
   }
 
   if (parser_thread_running_) {
-    if (state_mutex_ != nullptr) {
+    if (locked) {
       state_mutex_->unlock();
     }
     return true;
   }
   if (transport_ == nullptr) {
-    if (state_mutex_ != nullptr) {
+    if (locked) {
       state_mutex_->unlock();
     }
     return false;
   }
   if (state_mutex_ == nullptr) {
     state_mutex_ = new rtos::Mutex();
+    if (state_mutex_ != nullptr) {
+      state_mutex_->lock();
+      locked = true;
+    }
   }
   if (parser_thread_flags_ == nullptr) {
     parser_thread_flags_ = new rtos::EventFlags();
@@ -463,7 +469,7 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
   }
   if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
       parser_thread_stopped_ == nullptr || parser_thread_ == nullptr) {
-    if (state_mutex_ != nullptr) {
+    if (locked) {
       state_mutex_->unlock();
     }
     return false;
@@ -471,7 +477,9 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
 
   parser_thread_running_ = true;
   parser_thread_->start(mbed::callback(this, &MuBusNode::parserThreadLoop));
-  state_mutex_->unlock();
+  if (locked) {
+    state_mutex_->unlock();
+  }
   return true;
 #else
   (void)poll_interval_ms;
@@ -483,15 +491,17 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
 bool MuBusNode::stopParserThread() {
 #if MUBUS_ENABLE_PARSER_THREAD
   rtos::Thread *thread = nullptr;
+  bool locked = false;
 
   if (state_mutex_ != nullptr) {
     state_mutex_->lock();
+    locked = true;
   }
 
   if (!parser_thread_running_) {
     thread = parser_thread_;
     parser_thread_ = nullptr;
-    if (state_mutex_ != nullptr) {
+    if (locked) {
       state_mutex_->unlock();
     }
     if (thread != nullptr) {
@@ -505,7 +515,7 @@ bool MuBusNode::stopParserThread() {
   thread = parser_thread_;
   parser_thread_ = nullptr;
 
-  if (state_mutex_ != nullptr) {
+  if (locked) {
     state_mutex_->unlock();
   }
 
