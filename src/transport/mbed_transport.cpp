@@ -33,7 +33,12 @@ MuBusNode::MuBusNode(mbed::BufferedSerial *port, uint8_t addr)
 }
 
 bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
-  return assignTransport(new MbedBufferedSerialTransport(port), true, addr);
+  return assignTransport(new MbedBufferedSerialTransport(port), true, addr, config_);
+}
+
+bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr,
+                      const MuBusConfig &config) {
+  return assignTransport(new MbedBufferedSerialTransport(port), true, addr, config);
 }
 #else
 MuBusNode::MuBusNode(mbed::BufferedSerial *port) : MuBusNode() { (void)port; }
@@ -44,6 +49,13 @@ MuBusNode::MuBusNode(mbed::BufferedSerial *port, uint8_t addr)
 bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
   (void)port;
   (void)addr;
+  return false;
+}
+bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr,
+                      const MuBusConfig &config) {
+  (void)port;
+  (void)addr;
+  (void)config;
   return false;
 }
 #endif
