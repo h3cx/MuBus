@@ -28,6 +28,8 @@ namespace MuBus {
 
 static constexpr uint8_t kSync0 = 0xD3;
 static constexpr uint8_t kSync1 = 0x91;
+static constexpr uint8_t kBroadcastAddress = 0x00;
+static constexpr uint8_t kReservedAddress = 0xFF;
 static constexpr uint8_t kHeaderSize = 6;
 static constexpr uint16_t kMaxPayload = 506;
 static constexpr uint8_t kMaxRxQueueDepth = 8;
@@ -55,6 +57,12 @@ static_assert(kMaxTxQueueDepth <= UINT8_MAX,
 enum class RxMode : uint8_t { SingleSlot, Ring };
 enum class TxMode : uint8_t { Direct, Queue };
 enum class CrcMode : uint8_t { None, Crc8, Crc16 };
+enum class DestinationFilterMode : uint8_t {
+  AddressedOrBroadcast,
+  AcceptBroadcastOnly,
+  AcceptUnicastOnly,
+  Promiscuous,
+};
 
 struct MuBusDiagnostics {
   uint32_t sync_errors = 0;
@@ -73,6 +81,8 @@ struct MuBusConfig {
   uint16_t max_payload_size = kMaxPayload;
   CrcMode crc_mode = CrcMode::None;
   uint32_t parser_timeout_ms = 0;
+  DestinationFilterMode destination_filter_mode =
+      DestinationFilterMode::AddressedOrBroadcast;
 };
 
 static_assert(static_cast<uint8_t>(RxMode::SingleSlot) !=
@@ -113,11 +123,11 @@ public:
   MuPacketHeader(uint8_t source_addr);
   MuPacketHeader(uint8_t source_addr, uint8_t dest_addr);
   void bindSource(uint8_t addr);
-  uint8_t getSource();
+  uint8_t getSource() const;
   void bindDest(uint8_t addr);
-  uint8_t getDest();
+  uint8_t getDest() const;
   void setSize(uint16_t size);
-  uint16_t getSize();
+  uint16_t getSize() const;
   uint8_t *serialize();
 };
 
@@ -212,6 +222,7 @@ private:
   uint16_t computeCrc16(uint8_t src, uint8_t dst, uint16_t len,
                         const uint8_t *payload) const;
   bool finalizeParsedFrame(Frame &frame);
+  bool shouldAcceptDestination(uint8_t dst) const;
   void resetParser();
   void updateParserTimeout();
   uint8_t crcFieldSize() const;

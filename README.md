@@ -29,7 +29,7 @@ MuBusNode node(&Serial1, 0x01);
 You will still be required to call `Serial1.begin()` seperately as μBus doesn't handle this yet
 
 ## Sending Data
-Once you have set up your node, you can now send data from it. Currently the only supported mode is broadcast (`dest_addr = 0x00`).
+Once you have set up your node, you can now send data from it. Use `send(dst, data, len)` for unicast and `broadcast(...)` for broadcast (`dest_addr = 0x00`).
 To broadcast you use the following function:
 ```cpp
 bool broadcast(uint8_t *buf, uint16_t len)
@@ -46,7 +46,7 @@ In order to receive data, the parse function can be used:
 ```cpp
 bool parse()
 ```
-This function will search for header bytes in the serial interface, and only once it finds a matching packet will it fully read it. If it reads a valid data frame, it will return true. This function will also filter the destination address and check it against its address that was set in the constructor, it will only decode packets that are destined to it or that are broadcast (0x00).
+This function will search for header bytes in the serial interface, and only once it finds a matching packet will it fully read it. If it reads a valid data frame, it will return true. Destination filtering is applied as an explicit step after full header decode (after `SRC`, `DST`, and `LEN` are available).
 This function is called in a loop to form the parser:
 ```cpp
 while(true) {
@@ -62,6 +62,29 @@ uint16_t getPayloadSize();
 ```
 
 
+
+
+## Address Semantics
+Address fields are one byte (`uint8_t`) and use the following meanings:
+
+- **Unicast:** any non-zero, non-reserved destination (`0x01` to `0xFE`) is treated as a unicast destination address.
+- **Broadcast:** destination `0x00` targets every node that is configured to accept broadcasts.
+- **Reserved:** `0xFF` is reserved and should not be assigned as a normal node address.
+
+### Parser destination filtering modes
+Destination filtering is configurable through `MuBusConfig::destination_filter_mode`:
+
+- `DestinationFilterMode::AddressedOrBroadcast` (default): accept frames addressed to this node or broadcast (`0x00`).
+- `DestinationFilterMode::AcceptBroadcastOnly`: accept only broadcast frames.
+- `DestinationFilterMode::AcceptUnicastOnly`: accept only unicast frames addressed to this node.
+- `DestinationFilterMode::Promiscuous`: accept all destinations (debug/sniffer mode).
+
+Example:
+```cpp
+MuBus::MuBusConfig config;
+config.destination_filter_mode = MuBus::DestinationFilterMode::Promiscuous;
+MuBus::MuBusNode node(&Serial1, 0x01, config);
+```
 
 ## Optional parser worker mode
 `MuBusNode` can now run parsing in either:
@@ -127,7 +150,7 @@ Frame layout is defined byte-for-byte as:
 
 - `SYNC[2]`: `0xD3`, `0x91`
 - `SRC[1]`: source node address
-- `DST[1]`: destination node address (`0x00` for broadcast)
+- `DST[1]`: destination node address (`0x00` for broadcast, `0xFF` reserved)
 - `LEN[2]`: payload length in **little-endian** byte order (`LEN[0]` = low byte, `LEN[1]` = high byte)
 - `PAYLOAD[LEN]`: payload bytes
 - optional `CRC[1|2]`: present only when `MuBusConfig::crc_mode` is `Crc8` or `Crc16`

@@ -52,10 +52,10 @@ MuPacketHeader::MuPacketHeader(uint8_t source_addr, uint8_t dest_addr)
 
 void MuPacketHeader::bindSource(uint8_t addr) { source_addr_ = addr; }
 void MuPacketHeader::bindDest(uint8_t addr) { dest_addr_ = addr; }
-uint8_t MuPacketHeader::getSource() { return source_addr_; }
-uint8_t MuPacketHeader::getDest() { return dest_addr_; }
+uint8_t MuPacketHeader::getSource() const { return source_addr_; }
+uint8_t MuPacketHeader::getDest() const { return dest_addr_; }
 void MuPacketHeader::setSize(uint16_t size) { body_size_ = size; }
-uint16_t MuPacketHeader::getSize() { return body_size_; }
+uint16_t MuPacketHeader::getSize() const { return body_size_; }
 
 uint8_t *MuPacketHeader::serialize() {
   encodeHeaderBytewise(s_head_, source_addr_, dest_addr_, body_size_);
@@ -325,7 +325,7 @@ bool MuBusNode::send(uint8_t dst, const uint8_t *data, uint16_t len) {
 }
 
 bool MuBusNode::broadcast(const uint8_t *data, uint16_t len) {
-  return send(0x00, data, len);
+  return send(kBroadcastAddress, data, len);
 }
 
 void MuBusNode::bindAddr(uint8_t addr) { out_packet_.bindSource(addr); }
@@ -601,13 +601,27 @@ bool MuBusNode::readTransportByte(uint8_t &byte) {
   return transport_->readByte(byte);
 }
 
+bool MuBusNode::shouldAcceptDestination(uint8_t dst) const {
+  switch (config_.destination_filter_mode) {
+  case DestinationFilterMode::AddressedOrBroadcast:
+    return dst == out_packet_.getSource() || dst == kBroadcastAddress;
+  case DestinationFilterMode::AcceptBroadcastOnly:
+    return dst == kBroadcastAddress;
+  case DestinationFilterMode::AcceptUnicastOnly:
+    return dst == out_packet_.getSource();
+  case DestinationFilterMode::Promiscuous:
+    return true;
+  }
+
+  return false;
+}
+
 bool MuBusNode::finalizeParsedFrame(Frame &frame) {
   in_packet_.bindSource(parser_.src);
   in_packet_.bindDest(parser_.dst);
   in_packet_.setSize(parser_.len);
 
-  if (in_packet_.getDest() != out_packet_.getSource() &&
-      in_packet_.getDest() != 0x00) {
+  if (!shouldAcceptDestination(in_packet_.getDest())) {
     diagnostics_.destination_mismatch++;
     diagnostics_.drop_count++;
     status_.dropped_frame_count++;
