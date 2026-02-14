@@ -58,6 +58,7 @@ MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr)
 bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
   port_ = port;
   bindAddr(addr);
+  resetParser();
   has_pending_frame_ = false;
   return port_ != nullptr;
 }
@@ -65,6 +66,7 @@ bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
 bool MuBusNode::begin(HardwareSerial *port, uint8_t addr) {
   port_ = port;
   bindAddr(addr);
+  resetParser();
   has_pending_frame_ = false;
   return port_ != nullptr;
 }
@@ -72,6 +74,7 @@ bool MuBusNode::begin(HardwareSerial *port, uint8_t addr) {
 
 void MuBusNode::stop() {
   port_ = nullptr;
+  resetParser();
   has_pending_frame_ = false;
   frame_callback_ = nullptr;
 }
@@ -156,114 +159,120 @@ bool MuBusNode::parse() {
   return true;
 }
 
-bool MuBusNode::readFrame(Frame &frame) {
+void MuBusNode::resetParser() {
+  parser_ = ParserContext{};
+}
+
+bool MuBusNode::readTransportByte(uint8_t &byte) {
   if (port_ == nullptr) {
     return false;
   }
 
 #ifdef MUBUS_MBED
-  if (port_->readable()) {
-    uint8_t header[kHeaderSize];
-    port_->read(header, 1);
-    if (header[0] != kSync0) {
-      return false;
-    }
-
-    while (!port_->readable()) {
-      rtos::ThisThread::sleep_for(2);
-    }
-    port_->read(header + 1, 1);
-    if (header[1] != kSync1) {
-      return false;
-    }
-
-    while (port_->readable() < (kHeaderSize - 2)) {
-      rtos::ThisThread::sleep_for(2);
-    }
-    port_->read(header + 2, kHeaderSize - 2);
-    if (!decodeHeaderBytewise(header, *in_packet_)) {
-      return false;
-    }
-    if (in_packet_->getDest() != out_packet_->getSource() &&
-        in_packet_->getDest() != 0x00) {
-      return false;
-    }
-    if (in_packet_->getSize() > kMaxPayload) {
-      return false;
-    }
-
-    uint16_t accumulated = 0;
-    while (accumulated < in_packet_->getSize()) {
-      if (port_->readable()) {
-        port_->read(in_buf_ + accumulated, 1);
-        accumulated++;
-      } else {
-        rtos::ThisThread::sleep_for(2);
-      }
-    }
-
-    frame.src = in_packet_->getSource();
-    frame.dst = in_packet_->getDest();
-    frame.len = in_packet_->getSize();
-    frame.payload = in_buf_;
-    return true;
-  } else {
-    rtos::ThisThread::sleep_for(5);
+  if (!port_->readable()) {
+    return false;
   }
-
-  return false;
+  return port_->read(&byte, 1) == 1;
 #else
-  if (port_->available()) {
-    uint8_t header[kHeaderSize];
-    header[0] = port_->read();
-    if (header[0] != kSync0) {
-      return false;
+  if (!port_->available()) {
+    return false;
+  }
+
+  const int value = port_->read();
+  if (value < 0) {
+    return false;
+  }
+
+  byte = static_cast<uint8_t>(value);
+  return true;
+#endif
+}
+
+bool MuBusNode::parseByte(uint8_t byte, Frame &frame) {
+  switch (parser_.state) {
+  case ParserState::Sync0:
+    if (byte == kSync0) {
+      parser_.state = ParserState::Sync1;
     }
-    while (!port_->available()) {
-      delay(2);
-    }
-    header[1] = port_->read();
-    if (header[1] != kSync1) {
-      return false;
-    }
-    while (port_->available() < (kHeaderSize - 2)) {
-      delay(2);
-    }
-    for (uint8_t i = 2; i < kHeaderSize; ++i) {
-      header[i] = port_->read();
-    }
-    if (!decodeHeaderBytewise(header, *in_packet_)) {
-      return false;
-    }
-    if (in_packet_->getDest() != out_packet_->getSource() &&
-        in_packet_->getDest() != 0x00) {
-      return false;
-    }
-    if (in_packet_->getSize() > kMaxPayload) {
+    return false;
+
+  case ParserState::Sync1:
+    if (byte == kSync1) {
+      parser_.state = ParserState::Src;
       return false;
     }
 
-    uint16_t accumulated = 0;
-    while (accumulated < in_packet_->getSize()) {
-      uint16_t remaining = in_packet_->getSize() - accumulated;
-      uint16_t available = port_->available();
-      if (available) {
-        uint16_t read_max = min(remaining, available);
-        port_->readBytes(in_buf_ + accumulated, read_max);
-        accumulated += read_max;
-      } else {
-        delay(2);
-      }
+    parser_.state = (byte == kSync0) ? ParserState::Sync1 : ParserState::Sync0;
+    return false;
+
+  case ParserState::Src:
+    parser_.src = byte;
+    parser_.state = ParserState::Dst;
+    return false;
+
+  case ParserState::Dst:
+    parser_.dst = byte;
+    parser_.state = ParserState::Len0;
+    return false;
+
+  case ParserState::Len0:
+    parser_.len = byte;
+    parser_.state = ParserState::Len1;
+    return false;
+
+  case ParserState::Len1:
+    parser_.len |= static_cast<uint16_t>(byte) << 8;
+    parser_.payload_index = 0;
+
+    if (parser_.len > kMaxPayload) {
+      parser_.state = (byte == kSync0) ? ParserState::Sync1 : ParserState::Sync0;
+      return false;
+    }
+
+    parser_.state = (parser_.len == 0) ? ParserState::Crc : ParserState::Payload;
+    return false;
+
+  case ParserState::Payload:
+    in_buf_[parser_.payload_index++] = byte;
+    if (parser_.payload_index < parser_.len) {
+      return false;
+    }
+
+    parser_.state = ParserState::Crc;
+    return false;
+
+  case ParserState::Crc:
+    in_packet_->bindSource(parser_.src);
+    in_packet_->bindDest(parser_.dst);
+    in_packet_->setSize(parser_.len);
+
+    if (in_packet_->getDest() != out_packet_->getSource() &&
+        in_packet_->getDest() != 0x00) {
+      parser_.state = (byte == kSync0) ? ParserState::Sync1 : ParserState::Sync0;
+      return false;
     }
 
     frame.src = in_packet_->getSource();
     frame.dst = in_packet_->getDest();
     frame.len = in_packet_->getSize();
     frame.payload = in_buf_;
+    resetParser();
     return true;
   }
+
+  resetParser();
   return false;
-#endif
+}
+
+bool MuBusNode::readFrame(Frame &frame) {
+  uint8_t byte = 0;
+  while (readTransportByte(byte)) {
+    if (parseByte(byte, frame)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 } // namespace MuBus
