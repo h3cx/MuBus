@@ -37,6 +37,12 @@ MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr)
   owns_transport_ = true;
 }
 
+MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
+                     const MuBusConfig &config)
+    : MuBusNode(new ArduinoSerialTransport(port), addr, config) {
+  owns_transport_ = true;
+}
+
 bool MuBusNode::begin(arduino::HardwareSerial *port, uint8_t addr) {
   return assignTransport(new ArduinoSerialTransport(port), true, addr, config_);
 }
@@ -48,6 +54,11 @@ bool MuBusNode::begin(arduino::HardwareSerial *port, uint8_t addr,
 #else
 MuBusNode::MuBusNode(arduino::HardwareSerial *port) : MuBusNode() { (void)port; }
 MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr) : MuBusNode(addr) {
+  (void)port;
+}
+MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
+                     const MuBusConfig &config)
+    : MuBusNode(addr, config) {
   (void)port;
 }
 bool MuBusNode::begin(arduino::HardwareSerial *port, uint8_t addr) {

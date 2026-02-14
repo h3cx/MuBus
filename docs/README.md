@@ -161,10 +161,12 @@ Transport + address + config.
 
 #### `MuBusNode(arduino::HardwareSerial *port);`
 #### `MuBusNode(arduino::HardwareSerial *port, uint8_t addr);`
+#### `MuBusNode(arduino::HardwareSerial *port, uint8_t addr, const MuBusConfig &config);`
 On supported builds, allocates internal `ArduinoSerialTransport` and takes ownership.
 
 #### `MuBusNode(mbed::BufferedSerial *port);`
 #### `MuBusNode(mbed::BufferedSerial *port, uint8_t addr);`
+#### `MuBusNode(mbed::BufferedSerial *port, uint8_t addr, const MuBusConfig &config);`
 On supported builds, allocates internal `MbedBufferedSerialTransport` and takes ownership.
 
 #### `~MuBusNode();`
@@ -337,11 +339,12 @@ cfg.destination_filter_mode = MuBus::DestinationFilterMode::Promiscuous;
 
 ### 5.1 Expected lifecycle / call order
 Typical threaded flow:
-1. Construct node and call `begin(...)` (or use constructor with bound transport/address).
+1. Construct node with canonical constructor usage (`port, addr` for basic or `port, addr, config` for advanced).
 2. Optionally call `onFrame(...)`.
 3. Call `startParserThread(...)`.
 4. Runtime: app can use callbacks and/or `available()/receive()`.
-5. Before teardown or rebind: call `stopParserThread()` then `stop()` / `begin(...)` new transport.
+5. Use `begin(...)` only when rebinding transport and/or reconfiguring after construction.
+6. Before teardown or rebind: call `stopParserThread()` then `stop()` / `begin(...)` new transport.
 
 ### 5.2 Behavior when thread mode is unavailable
 If `MUBUS_ENABLE_PARSER_THREAD == 0`:
@@ -437,7 +440,7 @@ void loop() {
 }
 ```
 
-### 7.3 Callback + parser thread usage
+### 7.3 Callback + parser thread usage (canonical mbed basic)
 ```cpp
 #include <mbed.h>
 #include <MuBus.h>
@@ -465,7 +468,24 @@ int main() {
 }
 ```
 
-### 7.4 Ring-buffer RX configuration
+### 7.4 Canonical mbed advanced construction
+```cpp
+#include <mbed.h>
+#include <MuBus.h>
+
+mbed::BufferedSerial port(PA_9, PA_10, 115200);
+
+MuBus::MuBusConfig cfg;
+cfg.crc_mode = MuBus::CrcMode::Crc16;
+cfg.rx_mode = MuBus::RxMode::Ring;
+cfg.rx_queue_depth = 4;
+
+MuBus::MuBusNode node(&port, 0x20, cfg);
+```
+
+Use `begin(...)` after construction only when you need to rebind transport and/or apply a new runtime configuration.
+
+### 7.5 Ring-buffer RX configuration
 ```cpp
 MuBus::MuBusConfig cfg;
 cfg.rx_mode = MuBus::RxMode::Ring;
@@ -475,19 +495,18 @@ MuBus::MuBusNode node;
 node.begin(&Serial1, 0x11, cfg);
 ```
 
-### 7.5 CRC-enabled example
+### 7.6 CRC-enabled example
 ```cpp
 MuBus::MuBusConfig cfg;
 cfg.crc_mode = MuBus::CrcMode::Crc16;
 
-MuBus::MuBusNode node(&Serial1, 0x01);
-node.begin(&Serial1, 0x01, cfg);
+MuBus::MuBusNode node(&Serial1, 0x01, cfg);
 
 const uint8_t data[] = {0xDE, 0xAD, 0xBE, 0xEF};
 (void)node.broadcast(data, sizeof(data));
 ```
 
-### 7.6 Migration: `parse()+getPayload()` to `receive(Frame&)`
+### 7.7 Migration: `parse()+getPayload()` to `receive(Frame&)`
 ```cpp
 // Deprecated style
 if (node.parse()) {
@@ -505,7 +524,7 @@ if (node.receive(f)) {
 }
 ```
 
-### 7.7 Cross-links to repository examples
+### 7.8 Cross-links to repository examples
 - Sender: `examples/sender_basic/sender_basic.ino`
 - Polling receiver: `examples/receiver_polling/receiver_polling.ino`
 - Callback/threaded receiver: `examples/receiver_callback_threaded/receiver_callback_threaded.ino`

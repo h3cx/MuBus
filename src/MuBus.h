@@ -284,8 +284,12 @@ public:
   MuBusNode(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
   MuBusNode(arduino::HardwareSerial *port);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
+  MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
+            const MuBusConfig &config);
   MuBusNode(mbed::BufferedSerial *port);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
+  MuBusNode(mbed::BufferedSerial *port, uint8_t addr,
+            const MuBusConfig &config);
   ~MuBusNode();
 
   bool begin(MuTransport *transport, uint8_t addr);
