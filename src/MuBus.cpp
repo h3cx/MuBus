@@ -7,7 +7,7 @@ MuPacketHeader::MuPacketHeader(uint8_t source_addr, uint8_t dest_addr)
     : source_addr_(source_addr), dest_addr_(dest_addr) {}
 
 void MuPacketHeader::bindSource(uint8_t addr) { source_addr_ = addr; }
-void MuPacketHeader::bindDest(uint8_t addr) { source_addr_ = addr; }
+void MuPacketHeader::bindDest(uint8_t addr) { dest_addr_ = addr; }
 uint8_t MuPacketHeader::getSource() { return source_addr_; }
 uint8_t MuPacketHeader::getDest() { return dest_addr_; }
 void MuPacketHeader::setSize(uint16_t size) { body_size_ = size; };
@@ -115,7 +115,7 @@ bool MuBusNode::parse() {
     while (port_->readable() < 2) {
       rtos::ThisThread::sleep_for(2);
     }
-    uint8_t size;
+    uint16_t size;
     port_->read(&size, 2);
     in_packet_->setSize(size);
     uint16_t accumulated = 0;
