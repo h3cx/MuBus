@@ -2,19 +2,26 @@
 
 #include <stdio.h>
 
-#if !MUBUS_HAS_ARDUINO || MUBUS_ENABLE_PARSER_THREAD
+#if !defined(MUBUS_RUNTIME_ARDUINO) || defined(MUBUS_ENABLE_PARSER_THREAD)
 #include <chrono>
 #endif
 
-#if MUBUS_HAS_MBED
+#ifdef MUBUS_RUNTIME_MBED
 #include <mbed.h>
+#endif
+
+#ifdef MUBUS_RUNTIME_FREERTOS
+#include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 #endif
 
 namespace MuBus {
 
 namespace {
 uint32_t nowMs() {
-#if MUBUS_HAS_ARDUINO
+#ifdef MUBUS_RUNTIME_ARDUINO
   return millis();
 #else
   using namespace std::chrono;
@@ -89,18 +96,30 @@ MuBusNode::MuBusNode(MuTransport *transport, uint8_t addr,
 }
 
 void MuBusNode::lockState() {
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   if (state_mutex_ != nullptr) {
     state_mutex_->lock();
   }
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+  if (state_mutex_ != nullptr) {
+    (void)xSemaphoreTake(state_mutex_, portMAX_DELAY);
+  }
+#endif
 #endif
 }
 
 void MuBusNode::unlockState() {
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   if (state_mutex_ != nullptr) {
     state_mutex_->unlock();
   }
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+  if (state_mutex_ != nullptr) {
+    (void)xSemaphoreGive(state_mutex_);
+  }
+#endif
 #endif
 }
 
@@ -109,10 +128,25 @@ MuBusNode::~MuBusNode() {
   if (owns_transport_) {
     delete transport_;
   }
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   delete state_mutex_;
   delete parser_thread_flags_;
   delete parser_thread_stopped_;
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+  if (state_mutex_ != nullptr) {
+    vSemaphoreDelete(state_mutex_);
+    state_mutex_ = nullptr;
+  }
+  if (parser_thread_flags_ != nullptr) {
+    vEventGroupDelete(parser_thread_flags_);
+    parser_thread_flags_ = nullptr;
+  }
+  if (parser_thread_stopped_ != nullptr) {
+    vSemaphoreDelete(parser_thread_stopped_);
+    parser_thread_stopped_ = nullptr;
+  }
+#endif
 #endif
 }
 
@@ -433,7 +467,8 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
                                   uint32_t stop_timeout_ms) {
   parser_thread_config_.poll_interval_ms = poll_interval_ms;
   parser_thread_config_.stop_timeout_ms = stop_timeout_ms;
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   bool locked = false;
   if (state_mutex_ != nullptr) {
     state_mutex_->lock();
@@ -484,6 +519,70 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
     state_mutex_->unlock();
   }
   return true;
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+  bool locked = false;
+
+  if (state_mutex_ == nullptr) {
+    state_mutex_ = xSemaphoreCreateMutex();
+  }
+  if (state_mutex_ != nullptr) {
+    locked = (xSemaphoreTake(state_mutex_, portMAX_DELAY) == pdTRUE);
+  }
+
+  if (parser_thread_running_) {
+    if (locked) {
+      (void)xSemaphoreGive(state_mutex_);
+    }
+    return true;
+  }
+
+  if (transport_ == nullptr) {
+    if (locked) {
+      (void)xSemaphoreGive(state_mutex_);
+    }
+    return false;
+  }
+
+  if (parser_thread_flags_ == nullptr) {
+    parser_thread_flags_ = xEventGroupCreate();
+  }
+  if (parser_thread_stopped_ == nullptr) {
+    parser_thread_stopped_ = xSemaphoreCreateBinary();
+  }
+
+  if (state_mutex_ == nullptr || parser_thread_flags_ == nullptr ||
+      parser_thread_stopped_ == nullptr) {
+    if (locked) {
+      (void)xSemaphoreGive(state_mutex_);
+    }
+    return false;
+  }
+
+  parser_thread_running_ = true;
+  const uint32_t stack_words =
+      (config_.parser_thread_stack_bytes + sizeof(StackType_t) - 1) /
+      sizeof(StackType_t);
+  const BaseType_t created = xTaskCreate(
+      &MuBusNode::parserThreadEntry, "mubus_parser",
+      stack_words > 0 ? stack_words : 1024, this, tskIDLE_PRIORITY + 1,
+      &parser_thread_);
+
+  if (locked) {
+    (void)xSemaphoreGive(state_mutex_);
+  }
+
+  if (created != pdPASS) {
+    parser_thread_running_ = false;
+    parser_thread_ = nullptr;
+    return false;
+  }
+
+  return true;
+#else
+  (void)poll_interval_ms;
+  (void)stop_timeout_ms;
+  return false;
+#endif
 #else
   (void)poll_interval_ms;
   (void)stop_timeout_ms;
@@ -492,7 +591,8 @@ bool MuBusNode::startParserThread(uint32_t poll_interval_ms,
 }
 
 bool MuBusNode::stopParserThread() {
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   rtos::Thread *thread = nullptr;
   bool locked = false;
 
@@ -535,12 +635,49 @@ bool MuBusNode::stopParserThread() {
     delete thread;
   }
   return true;
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+  bool locked = false;
+
+  if (state_mutex_ != nullptr) {
+    locked = (xSemaphoreTake(state_mutex_, portMAX_DELAY) == pdTRUE);
+  }
+
+  if (!parser_thread_running_) {
+    if (locked) {
+      (void)xSemaphoreGive(state_mutex_);
+    }
+    return true;
+  }
+
+  parser_thread_running_ = false;
+  if (locked) {
+    (void)xSemaphoreGive(state_mutex_);
+  }
+
+  if (parser_thread_flags_ != nullptr) {
+    (void)xEventGroupSetBits(parser_thread_flags_, 0x1);
+  }
+
+  if (parser_thread_stopped_ != nullptr) {
+    const TickType_t timeout_ticks =
+        pdMS_TO_TICKS(parser_thread_config_.stop_timeout_ms);
+    if (xSemaphoreTake(parser_thread_stopped_, timeout_ticks) != pdTRUE) {
+      return false;
+    }
+  }
+
+  parser_thread_ = nullptr;
+  return true;
+#else
+  return true;
+#endif
 #else
   return true;
 #endif
 }
 
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
 void MuBusNode::parserThreadLoop() {
   while (parser_thread_running_) {
     poll();
@@ -557,6 +694,36 @@ void MuBusNode::parserThreadLoop() {
     parser_thread_stopped_->release();
   }
 }
+#elif defined(MUBUS_RUNTIME_FREERTOS)
+void MuBusNode::parserThreadEntry(void *arg) {
+  if (arg == nullptr) {
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  static_cast<MuBusNode *>(arg)->parserThreadLoop();
+}
+
+void MuBusNode::parserThreadLoop() {
+  while (parser_thread_running_) {
+    poll();
+    if (parser_thread_flags_ == nullptr) {
+      vTaskDelay(pdMS_TO_TICKS(parser_thread_config_.poll_interval_ms));
+      continue;
+    }
+
+    (void)xEventGroupWaitBits(parser_thread_flags_, 0x1, pdTRUE, pdFALSE,
+                              pdMS_TO_TICKS(parser_thread_config_.poll_interval_ms));
+  }
+
+  if (parser_thread_stopped_ != nullptr) {
+    (void)xSemaphoreGive(parser_thread_stopped_);
+  }
+
+  parser_thread_ = nullptr;
+  vTaskDelete(nullptr);
+}
+#endif
 #endif
 
 bool MuBusNode::available() {

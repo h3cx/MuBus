@@ -2,7 +2,7 @@
 
 #include "../MuBus.h"
 
-#if MUBUS_ENABLE_MBED_TRANSPORT
+#ifdef MUBUS_RUNTIME_MBED
 #include <mbed.h>
 
 namespace MuBus {

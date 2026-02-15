@@ -1,3 +1,4 @@
+#define MUBUS_RUNTIME_ARDUINO
 #include <MuBus.h>
 
 namespace {

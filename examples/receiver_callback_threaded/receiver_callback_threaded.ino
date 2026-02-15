@@ -1,3 +1,4 @@
+#define MUBUS_RUNTIME_ARDUINO
 #include <MuBus.h>
 
 namespace {
@@ -31,7 +32,7 @@ void setup() {
 
   node.onFrame(onFrame);
 
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
   // Threaded parser mode on mbed RTOS targets.
   if (!node.startParserThread(1, 200)) {
     Serial.println("failed to start parser thread");
@@ -44,7 +45,7 @@ void setup() {
 }
 
 void loop() {
-#if !MUBUS_ENABLE_PARSER_THREAD
+#ifndef MUBUS_ENABLE_PARSER_THREAD
   // Cooperative fallback for non-RTOS targets.
   node.tick();
 #endif
