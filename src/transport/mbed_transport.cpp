@@ -2,7 +2,7 @@
 
 namespace MuBus {
 
-#if MUBUS_RUNTIME_MBED
+#if defined(MUBUS_RUNTIME_MBED)
 MbedBufferedSerialTransport::MbedBufferedSerialTransport(
     mbed::BufferedSerial *port)
     : port_(port) {}
