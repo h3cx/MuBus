@@ -4,60 +4,58 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#ifndef MUBUS_HAS_ARDUINO
-#if __has_include(<Arduino.h>)
-#define MUBUS_HAS_ARDUINO 1
+#if defined(MUBUS_RUNTIME_ARDUINO)
+#define MUBUS_RUNTIME_ARDUINO_SELECTED 1
 #else
-#define MUBUS_HAS_ARDUINO 0
-#endif
+#define MUBUS_RUNTIME_ARDUINO_SELECTED 0
 #endif
 
-#ifndef MUBUS_HAS_MBED
-#if __has_include(<mbed.h>)
-#define MUBUS_HAS_MBED 1
+#if defined(MUBUS_RUNTIME_MBED)
+#define MUBUS_RUNTIME_MBED_SELECTED 1
 #else
-#define MUBUS_HAS_MBED 0
-#endif
+#define MUBUS_RUNTIME_MBED_SELECTED 0
 #endif
 
-#ifndef MUBUS_HAS_FREERTOS
-#if __has_include(<freertos/FreeRTOS.h>) && __has_include(<freertos/task.h>) && \
-    __has_include(<freertos/semphr.h>) && __has_include(<freertos/event_groups.h>)
-#define MUBUS_HAS_FREERTOS 1
+#if defined(MUBUS_RUNTIME_FREERTOS)
+#define MUBUS_RUNTIME_FREERTOS_SELECTED 1
 #else
-#define MUBUS_HAS_FREERTOS 0
+#define MUBUS_RUNTIME_FREERTOS_SELECTED 0
 #endif
+
+#if (MUBUS_RUNTIME_ARDUINO_SELECTED + MUBUS_RUNTIME_MBED_SELECTED +             \
+     MUBUS_RUNTIME_FREERTOS_SELECTED) == 0
+#error "Select one runtime: define exactly one of MUBUS_RUNTIME_ARDUINO, MUBUS_RUNTIME_MBED, or MUBUS_RUNTIME_FREERTOS"
+#elif (MUBUS_RUNTIME_ARDUINO_SELECTED + MUBUS_RUNTIME_MBED_SELECTED +           \
+       MUBUS_RUNTIME_FREERTOS_SELECTED) > 1
+#error "Only one runtime may be selected: define exactly one MUBUS_RUNTIME_* macro"
 #endif
+
+#define MUBUS_RUNTIME_ARDUINO MUBUS_RUNTIME_ARDUINO_SELECTED
+#define MUBUS_RUNTIME_MBED MUBUS_RUNTIME_MBED_SELECTED
+#define MUBUS_RUNTIME_FREERTOS MUBUS_RUNTIME_FREERTOS_SELECTED
 
 #ifndef MUBUS_ENABLE_PARSER_THREAD
-#define MUBUS_ENABLE_PARSER_THREAD (MUBUS_HAS_MBED || MUBUS_HAS_FREERTOS)
+#define MUBUS_ENABLE_PARSER_THREAD                                             \
+  (MUBUS_RUNTIME_MBED || MUBUS_RUNTIME_FREERTOS)
 #endif
 
-
-#ifndef MUBUS_ENABLE_ARDUINO_TRANSPORT
-#define MUBUS_ENABLE_ARDUINO_TRANSPORT MUBUS_HAS_ARDUINO
-#endif
-
-#ifndef MUBUS_ENABLE_MBED_TRANSPORT
-#define MUBUS_ENABLE_MBED_TRANSPORT MUBUS_HAS_MBED
-#endif
-
-#if MUBUS_HAS_ARDUINO
+#if MUBUS_RUNTIME_ARDUINO
 #include <Arduino.h>
 #else
 #include <string>
 using String = std::string;
 #endif
 
+#if MUBUS_RUNTIME_ARDUINO
 namespace arduino {
 class HardwareSerial;
 }
+#endif
 
+#if MUBUS_RUNTIME_MBED
 namespace mbed {
 class BufferedSerial;
 }
-
-#if MUBUS_HAS_MBED
 namespace rtos {
 class Thread;
 class Mutex;
@@ -66,7 +64,7 @@ class Semaphore;
 } // namespace rtos
 #endif
 
-#if MUBUS_HAS_FREERTOS
+#if MUBUS_RUNTIME_FREERTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <freertos/semphr.h>
@@ -241,12 +239,12 @@ private:
   uint32_t parser_last_byte_ms_ = 0;
 
 #if MUBUS_ENABLE_PARSER_THREAD
-#if MUBUS_HAS_MBED
+#if MUBUS_RUNTIME_MBED
   rtos::Thread *parser_thread_ = nullptr;
   rtos::Mutex *state_mutex_ = nullptr;
   rtos::EventFlags *parser_thread_flags_ = nullptr;
   rtos::Semaphore *parser_thread_stopped_ = nullptr;
-#elif MUBUS_HAS_FREERTOS
+#elif MUBUS_RUNTIME_FREERTOS
   TaskHandle_t parser_thread_ = nullptr;
   SemaphoreHandle_t state_mutex_ = nullptr;
   EventGroupHandle_t parser_thread_flags_ = nullptr;
@@ -296,7 +294,7 @@ private:
   void unlockState();
 #if MUBUS_ENABLE_PARSER_THREAD
   void parserThreadLoop();
-#if MUBUS_HAS_FREERTOS
+#if MUBUS_RUNTIME_FREERTOS
   static void parserThreadEntry(void *arg);
 #endif
 #endif
@@ -308,22 +306,31 @@ public:
   MuBusNode(MuTransport *transport);
   MuBusNode(MuTransport *transport, uint8_t addr);
   MuBusNode(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
+#if MUBUS_RUNTIME_ARDUINO
   MuBusNode(arduino::HardwareSerial *port);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
             const MuBusConfig &config);
+#endif
+#if MUBUS_RUNTIME_MBED
   MuBusNode(mbed::BufferedSerial *port);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr,
             const MuBusConfig &config);
+#endif
   ~MuBusNode();
 
   bool begin(MuTransport *transport, uint8_t addr);
   bool begin(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
+#if MUBUS_RUNTIME_ARDUINO
   bool begin(arduino::HardwareSerial *port, uint8_t addr);
-  bool begin(arduino::HardwareSerial *port, uint8_t addr, const MuBusConfig &config);
+  bool begin(arduino::HardwareSerial *port, uint8_t addr,
+             const MuBusConfig &config);
+#endif
+#if MUBUS_RUNTIME_MBED
   bool begin(mbed::BufferedSerial *port, uint8_t addr);
   bool begin(mbed::BufferedSerial *port, uint8_t addr, const MuBusConfig &config);
+#endif
   void stop();
 
   void bindAddr(uint8_t addr);
