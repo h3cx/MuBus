@@ -367,11 +367,11 @@ bool MuBusNode::broadcast(const uint8_t *data, uint16_t len) {
 void MuBusNode::bindAddr(uint8_t addr) { out_packet_.bindSource(addr); }
 uint8_t *MuBusNode::getPayload() { return pending_frame_.payload; }
 uint16_t MuBusNode::getPayloadSize() { return pending_frame_.len; }
-String MuBusNode::formatHeader() {
-  char msg_buf[64];
-  snprintf(msg_buf, sizeof(msg_buf), "Source: 0x%02X\nDest: 0x%02X\nSize: 0x%04X",
+const char *MuBusNode::formatHeader() {
+  snprintf(formatted_header_, sizeof(formatted_header_),
+           "Source: 0x%02X\nDest: 0x%02X\nSize: 0x%04X",
            pending_frame_.src, pending_frame_.dst, pending_frame_.len);
-  return String(msg_buf);
+  return formatted_header_;
 }
 
 bool MuBusNode::rxQueueEnabled() const { return config_.rx_mode == RxMode::Ring; }
