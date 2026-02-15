@@ -49,6 +49,7 @@ MuBus::EspIdfUartTransportConfig cfg;
 cfg.uart_num = UART_NUM_1;
 cfg.tx_pin = GPIO_NUM_4;
 cfg.rx_pin = GPIO_NUM_5;
+cfg.read_timeout = pdMS_TO_TICKS(10); // parser thread can block briefly instead of hot-polling
 
 MuBus::EspIdfUartTransport transport(cfg);
 if (transport.begin()) {
@@ -57,7 +58,10 @@ if (transport.begin()) {
 }
 ```
 
-`readByte()` in this adapter is non-blocking via `uart_read_bytes(..., 1, 0)`, matching MuBus parser expectations.
+`readByte()` in this adapter uses `uart_read_bytes(..., 1, cfg.read_timeout)`.
+
+- `cfg.read_timeout = 0` keeps pure non-blocking polling semantics.
+- A small timeout (for example `pdMS_TO_TICKS(10)`) is useful when running parser threads under FreeRTOS to reduce spin/poll load.
 
 ## Minimal sender example
 
