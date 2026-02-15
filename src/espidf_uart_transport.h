@@ -64,6 +64,8 @@ public:
 private:
   EspIdfUartTransportConfig cfg_;
   bool started_ = false;
+  bool owns_driver_ = false;
+  esp_err_t last_err_ = ESP_OK;
 
   QueueHandle_t uart_queue_ = nullptr;
   SemaphoreHandle_t write_mutex_ = nullptr;

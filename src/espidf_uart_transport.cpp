@@ -13,10 +13,12 @@ EspIdfUartTransport::~EspIdfUartTransport() {
     write_mutex_ = nullptr;
   }
 
-  if (started_) {
+  if (started_ && owns_driver_) {
     (void)uart_driver_delete(cfg_.uart_num);
-    started_ = false;
   }
+
+  started_ = false;
+  owns_driver_ = false;
 }
 
 bool EspIdfUartTransport::begin() {
@@ -31,6 +33,9 @@ bool EspIdfUartTransport::begin() {
     }
   }
 
+  last_err_ = ESP_OK;
+  owns_driver_ = false;
+
   uart_config_t uc = {};
   uc.baud_rate = cfg_.baud;
   uc.data_bits = cfg_.data_bits;
@@ -40,19 +45,10 @@ bool EspIdfUartTransport::begin() {
   uc.rx_flow_ctrl_thresh = cfg_.rx_flow_ctrl_thresh;
   uc.source_clk = UART_SCLK_APB;
 
-  if (uart_param_config(cfg_.uart_num, &uc) != ESP_OK) {
+  last_err_ = uart_param_config(cfg_.uart_num, &uc);
+  if (last_err_ != ESP_OK) {
     return false;
   }
-
-  QueueHandle_t queue = nullptr;
-  const int queue_len = cfg_.event_queue_len;
-  if (uart_driver_install(cfg_.uart_num, cfg_.rx_buffer_bytes,
-                          cfg_.tx_buffer_bytes, queue_len,
-                          (queue_len > 0) ? &queue : nullptr,
-                          0) != ESP_OK) {
-    return false;
-  }
-  uart_queue_ = queue;
 
   const int tx =
       (cfg_.tx_pin == GPIO_NUM_NC) ? UART_PIN_NO_CHANGE : cfg_.tx_pin;
@@ -63,8 +59,37 @@ bool EspIdfUartTransport::begin() {
   const int cts =
       (cfg_.cts_pin == GPIO_NUM_NC) ? UART_PIN_NO_CHANGE : cfg_.cts_pin;
 
-  if (uart_set_pin(cfg_.uart_num, tx, rx, rts, cts) != ESP_OK) {
-    (void)uart_driver_delete(cfg_.uart_num);
+  last_err_ = uart_set_pin(cfg_.uart_num, tx, rx, rts, cts);
+  if (last_err_ != ESP_OK) {
+    return false;
+  }
+
+  QueueHandle_t queue = nullptr;
+  const int queue_len = cfg_.event_queue_len;
+  last_err_ = uart_driver_install(cfg_.uart_num, cfg_.rx_buffer_bytes,
+                                  cfg_.tx_buffer_bytes, queue_len,
+                                  (queue_len > 0) ? &queue : nullptr,
+                                  0);
+
+  if (last_err_ == ESP_OK) {
+    owns_driver_ = true;
+    uart_queue_ = queue;
+  } else if (last_err_ == ESP_FAIL) {
+    // ESP-IDF returns ESP_FAIL when a UART driver is already installed.
+    // Reuse the existing driver instead of treating this as a fatal error.
+    owns_driver_ = false;
+    uart_queue_ = nullptr;
+    last_err_ = ESP_OK;
+  } else {
+    return false;
+  }
+
+  last_err_ = uart_flush_input(cfg_.uart_num);
+  if (last_err_ != ESP_OK) {
+    if (owns_driver_) {
+      (void)uart_driver_delete(cfg_.uart_num);
+      owns_driver_ = false;
+    }
     uart_queue_ = nullptr;
     return false;
   }
