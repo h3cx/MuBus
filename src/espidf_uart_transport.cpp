@@ -82,8 +82,26 @@ bool EspIdfUartTransport::write(const uint8_t *data, size_t len) {
     (void)xSemaphoreTake(write_mutex_, portMAX_DELAY);
   }
 
-  const int written =
-      uart_write_bytes(cfg_.uart_num, reinterpret_cast<const char *>(data), len);
+  size_t total_written = 0;
+  while (total_written < len) {
+    const int n = uart_write_bytes(
+        cfg_.uart_num,
+        reinterpret_cast<const char *>(data) + total_written,
+        len - total_written);
+    if (n < 0) {
+      if (write_mutex_ != nullptr) {
+        (void)xSemaphoreGive(write_mutex_);
+      }
+      return false;
+    }
+
+    if (n == 0) {
+      vTaskDelay(1);
+      continue;
+    }
+
+    total_written += static_cast<size_t>(n);
+  }
 
   if (cfg_.wait_tx_done) {
     (void)uart_wait_tx_done(cfg_.uart_num, cfg_.wait_tx_done_timeout);
@@ -93,7 +111,7 @@ bool EspIdfUartTransport::write(const uint8_t *data, size_t len) {
     (void)xSemaphoreGive(write_mutex_);
   }
 
-  return written == static_cast<int>(len);
+  return true;
 }
 
 bool EspIdfUartTransport::readByte(uint8_t &byte) {

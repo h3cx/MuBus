@@ -33,7 +33,7 @@ struct EspIdfUartTransportConfig {
   uint8_t rx_flow_ctrl_thresh = 0;
 
   int rx_buffer_bytes = 2048;
-  int tx_buffer_bytes = 0;
+  int tx_buffer_bytes = 2048;
   int event_queue_len = 0;
 
   bool wait_tx_done = false;
