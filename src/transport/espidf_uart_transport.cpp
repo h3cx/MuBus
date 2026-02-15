@@ -38,7 +38,7 @@ bool EspIdfUartTransport::begin() {
   uc.stop_bits = cfg_.stop_bits;
   uc.flow_ctrl = cfg_.flow_ctrl;
   uc.rx_flow_ctrl_thresh = cfg_.rx_flow_ctrl_thresh;
-  uc.source_clk = UART_SCLK_DEFAULT;
+  uc.source_clk = UART_SCLK_APB;
 
   if (uart_param_config(cfg_.uart_num, &uc) != ESP_OK) {
     return false;
