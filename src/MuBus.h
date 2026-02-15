@@ -306,13 +306,13 @@ public:
   MuBusNode(MuTransport *transport);
   MuBusNode(MuTransport *transport, uint8_t addr);
   MuBusNode(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-#if MUBUS_RUNTIME_ARDUINO
+#if defined(MUBUS_RUNTIME_ARDUINO)
   MuBusNode(arduino::HardwareSerial *port);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr);
   MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
             const MuBusConfig &config);
 #endif
-#if MUBUS_RUNTIME_MBED
+#if defined(MUBUS_RUNTIME_MBED)
   MuBusNode(mbed::BufferedSerial *port);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr,
@@ -322,12 +322,12 @@ public:
 
   bool begin(MuTransport *transport, uint8_t addr);
   bool begin(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-#if MUBUS_RUNTIME_ARDUINO
+#if defined(MUBUS_RUNTIME_ARDUINO)
   bool begin(arduino::HardwareSerial *port, uint8_t addr);
   bool begin(arduino::HardwareSerial *port, uint8_t addr,
              const MuBusConfig &config);
 #endif
-#if MUBUS_RUNTIME_MBED
+#if defined(MUBUS_RUNTIME_MBED)
   bool begin(mbed::BufferedSerial *port, uint8_t addr);
   bool begin(mbed::BufferedSerial *port, uint8_t addr, const MuBusConfig &config);
 #endif
