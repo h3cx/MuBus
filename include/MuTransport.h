@@ -1,11 +1,11 @@
 #ifdef MUBUS_RUNTIME_FREERTOS
-#include "../src/transport/espidf_uart_transport.h"
+#include "../src/espidf_uart_transport.h"
 #endif
 
 #ifdef MUBUS_RUNTIME_MBED
-#include "../src/transport/mbed_transport.h"
+#include "../src/mbed_transport.h"
 #endif
 
 #ifdef MUBUS_RUNTIME_ARDUINO
-#include "../src/transport/arduino_transport.h"
+#include "../src/arduino_transport.h"
 #endif

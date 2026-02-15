@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../MuBus.h"
+#include "MuBus.h"
 
 #ifdef MUBUS_RUNTIME_FREERTOS
 
