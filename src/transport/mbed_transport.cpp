@@ -2,7 +2,7 @@
 
 namespace MuBus {
 
-#if MUBUS_ENABLE_MBED_TRANSPORT
+#if MUBUS_RUNTIME_MBED
 MbedBufferedSerialTransport::MbedBufferedSerialTransport(
     mbed::BufferedSerial *port)
     : port_(port) {}
@@ -45,29 +45,6 @@ bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
 bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr,
                       const MuBusConfig &config) {
   return assignTransport(new MbedBufferedSerialTransport(port), true, addr, config);
-}
-#else
-MuBusNode::MuBusNode(mbed::BufferedSerial *port) : MuBusNode() { (void)port; }
-MuBusNode::MuBusNode(mbed::BufferedSerial *port, uint8_t addr)
-    : MuBusNode(addr) {
-  (void)port;
-}
-MuBusNode::MuBusNode(mbed::BufferedSerial *port, uint8_t addr,
-                     const MuBusConfig &config)
-    : MuBusNode(addr, config) {
-  (void)port;
-}
-bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr) {
-  (void)port;
-  (void)addr;
-  return false;
-}
-bool MuBusNode::begin(mbed::BufferedSerial *port, uint8_t addr,
-                      const MuBusConfig &config) {
-  (void)port;
-  (void)addr;
-  (void)config;
-  return false;
 }
 #endif
 

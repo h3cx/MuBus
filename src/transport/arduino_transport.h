@@ -2,7 +2,7 @@
 
 #include "../MuBus.h"
 
-#if MUBUS_ENABLE_ARDUINO_TRANSPORT
+#if MUBUS_RUNTIME_ARDUINO
 #include <HardwareSerial.h>
 
 namespace MuBus {

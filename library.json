@@ -19,10 +19,5 @@
   "homepage": "https://github.com/h3cx/MuBus",
   "dependencies": {},
   "frameworks": "*",
-  "platforms": "*",
-  "build": {
-    "flags": [
-      "-DMUBUS_ENABLE_PARSER_THREAD=MUBUS_HAS_MBED"
-    ]
-  }
+  "platforms": "*"
 }

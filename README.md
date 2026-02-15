@@ -86,29 +86,36 @@ int main() {
 - `stop()` tears down owned transport objects and resets parser/queue/diagnostic state.
 
 # Build-time backend and RTOS selection
-MuBus keeps RTOS symbols in code as `rtos::Thread`, `rtos::Mutex`, `rtos::EventFlags`, `rtos::Semaphore`, and `rtos::ThisThread`.
-When mbed support is enabled (`MUBUS_HAS_MBED=1`), MuBus provides the required forward declarations/bridge so `rtos::...` names resolve consistently.
+MuBus now requires an explicit runtime identity macro at compile time. Define exactly one of:
 
-Primary compile-time switches:
-- `MUBUS_ENABLE_PARSER_THREAD` (default: `MUBUS_HAS_MBED || MUBUS_HAS_FREERTOS`)
-- `MUBUS_ENABLE_ARDUINO_TRANSPORT` (default: `MUBUS_HAS_ARDUINO`)
-- `MUBUS_ENABLE_MBED_TRANSPORT` (default: `MUBUS_HAS_MBED`)
+- `MUBUS_RUNTIME_ARDUINO`
+- `MUBUS_RUNTIME_MBED`
+- `MUBUS_RUNTIME_FREERTOS`
 
-`library.json` carries the parser-thread feature flag, and you can override it per target in PlatformIO `build_flags`.
+Compilation fails if none or more than one are defined.
 
-Example:
+Optional feature switch:
+
+- `MUBUS_ENABLE_PARSER_THREAD` (defaults to enabled for mbed/freertos runtimes and disabled for arduino runtime)
+
+Runtime-gated transport classes and RTOS declarations are derived from the selected runtime, so choose the runtime per target in your build flags.
+
+Example PlatformIO configuration:
 ```ini
 [env:my_mbed]
 build_flags =
+  -DMUBUS_RUNTIME_MBED
   -DMUBUS_ENABLE_PARSER_THREAD=1
-  -DMUBUS_ENABLE_MBED_TRANSPORT=1
-  -DMUBUS_ENABLE_ARDUINO_TRANSPORT=0
 
 [env:my_arduino]
 build_flags =
+  -DMUBUS_RUNTIME_ARDUINO
   -DMUBUS_ENABLE_PARSER_THREAD=0
-  -DMUBUS_ENABLE_MBED_TRANSPORT=0
-  -DMUBUS_ENABLE_ARDUINO_TRANSPORT=1
+
+[env:my_freertos]
+build_flags =
+  -DMUBUS_RUNTIME_FREERTOS
+  -DMUBUS_ENABLE_PARSER_THREAD=1
 ```
 
 # Protocol specification
