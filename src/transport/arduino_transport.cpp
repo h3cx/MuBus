@@ -3,7 +3,7 @@
 namespace MuBus {
 
 #if defined(MUBUS_RUNTIME_ARDUINO)
-ArduinoSerialTransport::ArduinoSerialTransport(arduino::HardwareSerial *port)
+ArduinoSerialTransport::ArduinoSerialTransport(HardwareSerial *port)
     : port_(port) {}
 
 bool ArduinoSerialTransport::write(const uint8_t *data, size_t len) {
@@ -27,27 +27,27 @@ bool ArduinoSerialTransport::readByte(uint8_t &byte) {
   return true;
 }
 
-MuBusNode::MuBusNode(arduino::HardwareSerial *port)
+MuBusNode::MuBusNode(HardwareSerial *port)
     : MuBusNode(new ArduinoSerialTransport(port)) {
   owns_transport_ = true;
 }
 
-MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr)
+MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr)
     : MuBusNode(new ArduinoSerialTransport(port), addr) {
   owns_transport_ = true;
 }
 
-MuBusNode::MuBusNode(arduino::HardwareSerial *port, uint8_t addr,
+MuBusNode::MuBusNode(HardwareSerial *port, uint8_t addr,
                      const MuBusConfig &config)
     : MuBusNode(new ArduinoSerialTransport(port), addr, config) {
   owns_transport_ = true;
 }
 
-bool MuBusNode::begin(arduino::HardwareSerial *port, uint8_t addr) {
+bool MuBusNode::begin(HardwareSerial *port, uint8_t addr) {
   return assignTransport(new ArduinoSerialTransport(port), true, addr, config_);
 }
 
-bool MuBusNode::begin(arduino::HardwareSerial *port, uint8_t addr,
+bool MuBusNode::begin(HardwareSerial *port, uint8_t addr,
                       const MuBusConfig &config) {
   return assignTransport(new ArduinoSerialTransport(port), true, addr, config);
 }
