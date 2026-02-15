@@ -1,6 +1,6 @@
 # Arduino Runtime Guide
 
-**Runtime prerequisite:** compile with `-DMUBUS_RUNTIME_ARDUINO`.
+**Runtime prerequisite:** define `MUBUS_RUNTIME_ARDUINO` before including `MuBus.h`.
 
 Related references:
 - [Runtime selection](../runtime-selection.md)
@@ -125,16 +125,11 @@ void loop() {
 }
 ```
 
-## Build snippet (PlatformIO)
+## Compile-time define in your main file
 
-```ini
-[env:arduino_example]
-platform = atmelavr
-board = uno
-framework = arduino
-build_flags =
-  -DMUBUS_RUNTIME_ARDUINO
-  -DMUBUS_ENABLE_PARSER_THREAD=0
+```cpp
+#define MUBUS_RUNTIME_ARDUINO
+#include <MuBus.h>
 ```
 
 ## Why an overload is missing

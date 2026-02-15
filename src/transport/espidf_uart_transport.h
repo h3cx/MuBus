@@ -2,7 +2,7 @@
 
 #include "../MuBus.h"
 
-#if MUBUS_RUNTIME_FREERTOS
+#ifdef MUBUS_RUNTIME_FREERTOS
 
 #include <cstddef>
 #include <cstdint>

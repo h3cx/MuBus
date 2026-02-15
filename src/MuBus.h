@@ -4,53 +4,39 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(MUBUS_RUNTIME_ARDUINO)
-#define MUBUS_RUNTIME_ARDUINO_SELECTED 1
-#else
-#define MUBUS_RUNTIME_ARDUINO_SELECTED 0
-#endif
+#define MUBUS_RUNTIME_SELECTION_COUNT                                          \
+  (defined(MUBUS_RUNTIME_ARDUINO) + defined(MUBUS_RUNTIME_MBED) +             \
+   defined(MUBUS_RUNTIME_FREERTOS))
 
-#if defined(MUBUS_RUNTIME_MBED)
-#define MUBUS_RUNTIME_MBED_SELECTED 1
-#else
-#define MUBUS_RUNTIME_MBED_SELECTED 0
-#endif
-
-#if defined(MUBUS_RUNTIME_FREERTOS)
-#define MUBUS_RUNTIME_FREERTOS_SELECTED 1
-#else
-#define MUBUS_RUNTIME_FREERTOS_SELECTED 0
-#endif
-
-#if (MUBUS_RUNTIME_ARDUINO_SELECTED + MUBUS_RUNTIME_MBED_SELECTED +             \
-     MUBUS_RUNTIME_FREERTOS_SELECTED) == 0
+#if MUBUS_RUNTIME_SELECTION_COUNT == 0
 #error "Select one runtime: define exactly one of MUBUS_RUNTIME_ARDUINO, MUBUS_RUNTIME_MBED, or MUBUS_RUNTIME_FREERTOS"
-#elif (MUBUS_RUNTIME_ARDUINO_SELECTED + MUBUS_RUNTIME_MBED_SELECTED +           \
-       MUBUS_RUNTIME_FREERTOS_SELECTED) > 1
+#elif MUBUS_RUNTIME_SELECTION_COUNT > 1
 #error "Only one runtime may be selected: define exactly one MUBUS_RUNTIME_* macro"
 #endif
 
-#define MUBUS_RUNTIME_ARDUINO MUBUS_RUNTIME_ARDUINO_SELECTED
-#define MUBUS_RUNTIME_MBED MUBUS_RUNTIME_MBED_SELECTED
-#define MUBUS_RUNTIME_FREERTOS MUBUS_RUNTIME_FREERTOS_SELECTED
-
-#ifndef MUBUS_ENABLE_PARSER_THREAD
-#define MUBUS_ENABLE_PARSER_THREAD                                             \
-  (MUBUS_RUNTIME_MBED || MUBUS_RUNTIME_FREERTOS)
+#if defined(MUBUS_ENABLE_PARSER_THREAD) && defined(MUBUS_DISABLE_PARSER_THREAD)
+#error "Choose only one parser thread control macro: define MUBUS_ENABLE_PARSER_THREAD or MUBUS_DISABLE_PARSER_THREAD"
 #endif
 
-#if MUBUS_RUNTIME_ARDUINO
+#if !defined(MUBUS_ENABLE_PARSER_THREAD) && !defined(MUBUS_DISABLE_PARSER_THREAD)
+#if defined(MUBUS_RUNTIME_MBED) || defined(MUBUS_RUNTIME_FREERTOS)
+#define MUBUS_ENABLE_PARSER_THREAD
+#endif
+#endif
+
+#ifdef MUBUS_RUNTIME_ARDUINO
 #include <Arduino.h>
 #else
 #include <string>
 using String = std::string;
 #endif
 
-#if MUBUS_RUNTIME_ARDUINO
+
+#ifdef MUBUS_RUNTIME_ARDUINO
 class HardwareSerial;
 #endif
 
-#if MUBUS_RUNTIME_MBED
+#ifdef MUBUS_RUNTIME_MBED
 namespace mbed {
 class BufferedSerial;
 }
@@ -62,7 +48,7 @@ class Semaphore;
 } // namespace rtos
 #endif
 
-#if MUBUS_RUNTIME_FREERTOS
+#ifdef MUBUS_RUNTIME_FREERTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <freertos/semphr.h>
@@ -236,13 +222,13 @@ private:
   bool parser_thread_running_ = false;
   uint32_t parser_last_byte_ms_ = 0;
 
-#if MUBUS_ENABLE_PARSER_THREAD
-#if MUBUS_RUNTIME_MBED
+#ifdef MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_RUNTIME_MBED
   rtos::Thread *parser_thread_ = nullptr;
   rtos::Mutex *state_mutex_ = nullptr;
   rtos::EventFlags *parser_thread_flags_ = nullptr;
   rtos::Semaphore *parser_thread_stopped_ = nullptr;
-#elif MUBUS_RUNTIME_FREERTOS
+#elif defined(MUBUS_RUNTIME_FREERTOS)
   TaskHandle_t parser_thread_ = nullptr;
   SemaphoreHandle_t state_mutex_ = nullptr;
   EventGroupHandle_t parser_thread_flags_ = nullptr;
@@ -290,9 +276,9 @@ private:
   void pollCore();
   void lockState();
   void unlockState();
-#if MUBUS_ENABLE_PARSER_THREAD
+#ifdef MUBUS_ENABLE_PARSER_THREAD
   void parserThreadLoop();
-#if MUBUS_RUNTIME_FREERTOS
+#ifdef MUBUS_RUNTIME_FREERTOS
   static void parserThreadEntry(void *arg);
 #endif
 #endif
@@ -304,13 +290,13 @@ public:
   MuBusNode(MuTransport *transport);
   MuBusNode(MuTransport *transport, uint8_t addr);
   MuBusNode(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-#if defined(MUBUS_RUNTIME_ARDUINO)
+#ifdef MUBUS_RUNTIME_ARDUINO
   MuBusNode(HardwareSerial *port);
   MuBusNode(HardwareSerial *port, uint8_t addr);
   MuBusNode(HardwareSerial *port, uint8_t addr,
             const MuBusConfig &config);
 #endif
-#if defined(MUBUS_RUNTIME_MBED)
+#ifdef MUBUS_RUNTIME_MBED
   MuBusNode(mbed::BufferedSerial *port);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr);
   MuBusNode(mbed::BufferedSerial *port, uint8_t addr,
@@ -320,12 +306,12 @@ public:
 
   bool begin(MuTransport *transport, uint8_t addr);
   bool begin(MuTransport *transport, uint8_t addr, const MuBusConfig &config);
-#if defined(MUBUS_RUNTIME_ARDUINO)
+#ifdef MUBUS_RUNTIME_ARDUINO
   bool begin(HardwareSerial *port, uint8_t addr);
   bool begin(HardwareSerial *port, uint8_t addr,
              const MuBusConfig &config);
 #endif
-#if defined(MUBUS_RUNTIME_MBED)
+#ifdef MUBUS_RUNTIME_MBED
   bool begin(mbed::BufferedSerial *port, uint8_t addr);
   bool begin(mbed::BufferedSerial *port, uint8_t addr, const MuBusConfig &config);
 #endif

@@ -50,8 +50,8 @@ See [migration guide](../migration.md).
 
 Most missing-overload issues are runtime macro mismatches.
 
-- Need `HardwareSerial*` overloads: compile with `MUBUS_RUNTIME_ARDUINO`.
-- Need `mbed::BufferedSerial*` overloads: compile with `MUBUS_RUNTIME_MBED`.
+- Need `HardwareSerial*` overloads: define `MUBUS_RUNTIME_ARDUINO` before including `MuBus.h`.
+- Need `mbed::BufferedSerial*` overloads: define `MUBUS_RUNTIME_MBED` before including `MuBus.h`.
 - On FreeRTOS, use only `MuTransport*` overloads.
 
 Also verify only one `MUBUS_RUNTIME_*` macro is defined. See [runtime selection](../runtime-selection.md).

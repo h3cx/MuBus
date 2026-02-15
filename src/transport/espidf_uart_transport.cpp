@@ -1,6 +1,6 @@
 #include "espidf_uart_transport.h"
 
-#if MUBUS_RUNTIME_FREERTOS
+#ifdef MUBUS_RUNTIME_FREERTOS
 
 namespace MuBus {
 

@@ -1,6 +1,6 @@
 # FreeRTOS Runtime Guide
 
-**Runtime prerequisite:** compile with `-DMUBUS_RUNTIME_FREERTOS`.
+**Runtime prerequisite:** define `MUBUS_RUNTIME_FREERTOS` before including `MuBus.h`.
 
 Related references:
 - [Runtime selection](../runtime-selection.md)
@@ -155,16 +155,11 @@ void appTask(void *) {
 }
 ```
 
-## Build snippet (PlatformIO)
+## Compile-time define in your main file
 
-```ini
-[env:freertos_example]
-platform = espressif32
-board = esp32dev
-framework = espidf
-build_flags =
-  -DMUBUS_RUNTIME_FREERTOS
-  -DMUBUS_ENABLE_PARSER_THREAD=1
+```cpp
+#define MUBUS_RUNTIME_FREERTOS
+#include <MuBus.h>
 ```
 
 ## Why an overload is missing

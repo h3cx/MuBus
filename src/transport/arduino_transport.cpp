@@ -2,7 +2,7 @@
 
 namespace MuBus {
 
-#if defined(MUBUS_RUNTIME_ARDUINO)
+#ifdef MUBUS_RUNTIME_ARDUINO
 ArduinoSerialTransport::ArduinoSerialTransport(HardwareSerial *port)
     : port_(port) {}
 

@@ -18,7 +18,7 @@ API:
 - `stopParserThread()`
 
 Behavior:
-- Returns `false` if parser-thread feature is compiled out (`MUBUS_ENABLE_PARSER_THREAD=0`).
+- Returns `false` if parser-thread feature is compiled out (`MUBUS_DISABLE_PARSER_THREAD`).
 - Returns `false` if no transport is bound.
 - Returns `true` immediately if thread already running.
 
