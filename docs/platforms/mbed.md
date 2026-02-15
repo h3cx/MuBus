@@ -1,6 +1,6 @@
 # mbed Runtime Guide
 
-**Runtime prerequisite:** compile with `-DMUBUS_RUNTIME_MBED`.
+**Runtime prerequisite:** define `MUBUS_RUNTIME_MBED` before including `MuBus.h`.
 
 Related references:
 - [Runtime selection](../runtime-selection.md)
@@ -15,7 +15,7 @@ Related references:
 | `MuBusNode(mbed::BufferedSerial *port, ...)` constructors | Yes | Uses internal `MbedBufferedSerialTransport`. |
 | `begin(mbed::BufferedSerial *port, ...)` overloads | Yes | Rebinds/owns new transport. |
 | `MuBusNode(HardwareSerial*, ...)` | No | Arduino-only overloads. |
-| `startParserThread(...)` | Yes by default | Requires `MUBUS_ENABLE_PARSER_THREAD=1`. |
+| `startParserThread(...)` | Yes by default | Requires `MUBUS_ENABLE_PARSER_THREAD`. |
 | `poll()` / `tick()` | Yes | Works with or without parser thread. |
 
 ## Transport setup (mbed-only signatures)
@@ -124,16 +124,11 @@ int main() {
 }
 ```
 
-## Build snippet (PlatformIO)
+## Compile-time define in your main file
 
-```ini
-[env:mbed_example]
-platform = ststm32
-board = nucleo_f446re
-framework = mbed
-build_flags =
-  -DMUBUS_RUNTIME_MBED
-  -DMUBUS_ENABLE_PARSER_THREAD=1
+```cpp
+#define MUBUS_RUNTIME_MBED
+#include <MuBus.h>
 ```
 
 ## Why an overload is missing
