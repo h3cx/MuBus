@@ -21,7 +21,9 @@ Related references:
 
 ## Transport setup (FreeRTOS runtime)
 
-There is no built-in UART adapter in this runtime. Implement `MuTransport`:
+This runtime includes an optional ESP-IDF UART transport adapter for ESP32 targets (`src/transport/espidf_uart_transport.{h,cpp}`).
+
+For other platforms, implement `MuTransport`:
 
 ```cpp
 class UartTransport : public MuBus::MuTransport {
@@ -33,6 +35,29 @@ public:
 UartTransport uart;
 MuBus::MuBusNode node(&uart, 0x01);
 ```
+
+
+## ESP32 + ESP-IDF transport adapter
+
+On ESP32 FreeRTOS/ESP-IDF builds, you can use `MuBus::EspIdfUartTransport`:
+
+```cpp
+#include <MuBus.h>
+#include "transport/espidf_uart_transport.h"
+
+MuBus::EspIdfUartTransportConfig cfg;
+cfg.uart_num = UART_NUM_1;
+cfg.tx_pin = GPIO_NUM_4;
+cfg.rx_pin = GPIO_NUM_5;
+
+MuBus::EspIdfUartTransport transport(cfg);
+if (transport.begin()) {
+  MuBus::MuBusNode node(&transport, 0x01);
+  node.startParserThread(1, 200);
+}
+```
+
+`readByte()` in this adapter is non-blocking via `uart_read_bytes(..., 1, 0)`, matching MuBus parser expectations.
 
 ## Minimal sender example
 
