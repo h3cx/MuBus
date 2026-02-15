@@ -39,6 +39,10 @@ struct EspIdfUartTransportConfig {
   bool wait_tx_done = false;
   TickType_t wait_tx_done_timeout = pdMS_TO_TICKS(50);
 
+  // UART read timeout passed to uart_read_bytes() from readByte().
+  // Set to 0 for pure non-blocking polling semantics.
+  TickType_t read_timeout = pdMS_TO_TICKS(10);
+
   bool thread_safe_write = true;
 };
 

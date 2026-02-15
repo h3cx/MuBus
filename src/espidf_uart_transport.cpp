@@ -119,7 +119,7 @@ bool EspIdfUartTransport::readByte(uint8_t &byte) {
     return false;
   }
 
-  return uart_read_bytes(cfg_.uart_num, &byte, 1, 0) == 1;
+  return uart_read_bytes(cfg_.uart_num, &byte, 1, cfg_.read_timeout) == 1;
 }
 
 void EspIdfUartTransport::flushInput() {
