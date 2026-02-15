@@ -9,13 +9,13 @@ namespace MuBus {
 
 class ArduinoSerialTransport : public MuTransport {
 public:
-  explicit ArduinoSerialTransport(arduino::HardwareSerial *port);
+  explicit ArduinoSerialTransport(HardwareSerial *port);
 
   bool write(const uint8_t *data, size_t len) override;
   bool readByte(uint8_t &byte) override;
 
 private:
-  arduino::HardwareSerial *port_ = nullptr;
+  HardwareSerial *port_ = nullptr;
 };
 
 } // namespace MuBus

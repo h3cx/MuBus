@@ -81,7 +81,7 @@ int main() {
 
 
 ## Lifecycle notes
-- If a `MuBusNode` is constructed with `arduino::HardwareSerial*` or `mbed::BufferedSerial*`, the node is immediately bound to an internal transport wrapper; `begin(...)` is not required for first use.
+- If a `MuBusNode` is constructed with `HardwareSerial*` or `mbed::BufferedSerial*`, the node is immediately bound to an internal transport wrapper; `begin(...)` is not required for first use.
 - Use `begin(...)` only when rebinding transport/address/configuration at runtime.
 - `stop()` tears down owned transport objects and resets parser/queue/diagnostic state.
 
