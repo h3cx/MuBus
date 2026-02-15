@@ -341,7 +341,10 @@ public:
   // Deprecated: use receive(Frame&) and Frame::payload instead.
   uint8_t *getPayload();
   uint16_t getPayloadSize();
-  String formatHeader();
+  const char *formatHeader();
+
+private:
+  char formatted_header_[64] = {0};
 };
 
 } // namespace MuBus
